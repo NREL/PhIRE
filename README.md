@@ -55,3 +55,9 @@ Thank NSRDB, WTK, NREL, CCSM.
 - put all arguments in a text file and have the example script read in the file?
 - add in catching errors
 - clean up TAG and DISC models to include here
+
+20190722-101833_10_dni-dhi_nsrdb_us_2c lr-mr solar model
+20190714-214705_10_ua-va_wtk_us_2c     lr-mr wind model
+
+20190725-131548_100_ua-va_wtk_us_2c    mr-hr wind model
+20190906-084442_100_dni-dhi_nsrdb_us_2c mr-hr solar model
