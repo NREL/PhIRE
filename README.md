@@ -1,4 +1,5 @@
 ## Physics-Informed Resolution-Enhancing GANs (PhIRE GANs)
+**Inlcuding solar for now because it is easier to clean everything here. Will remove before PhIREGANs goes public.**   
 ___
 ### Requirements
 - Python v3.7
@@ -42,6 +43,8 @@ Both the pretraining (no adversarial component) and training (with adversarial c
 [4] Python  
 [5] TAG model  
 [6] DISC model
+[7] CCSM
+[8] ESGF
 
 #### Acknowledgments
 Thank NSRDB, WTK, NREL, CCSM.
