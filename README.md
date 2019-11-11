@@ -1,11 +1,11 @@
 ## Physics-Informed Resolution-Enhancing GANs (PhIRE GANs)
 ___
 ### Requirements
-- Python 3.7
-- TensorFlow vX.X
+- Python v3.7
+- TensorFlow v1.13.1
 - Recommended
-    - numpy vX.X
-    - matplotlib vX.X
+    - numpy v1.16.3
+    - matplotlib v3.0.3
 
 ### Data
 
@@ -46,18 +46,7 @@ Both the pretraining (no adversarial component) and training (with adversarial c
 #### Acknowledgments
 Thank NSRDB, WTK, NREL, CCSM.
 
-##### License
-
-
 ##### Todo:
 - make code flexible for argument inputs
 - make code flexible for surface roughness inputs
-- put all arguments in a text file and have the example script read in the file?
 - add in catching errors
-- clean up TAG and DISC models to include here
-
-20190722-101833_10_dni-dhi_nsrdb_us_2c lr-mr solar model
-20190714-214705_10_ua-va_wtk_us_2c     lr-mr wind model
-
-20190725-131548_100_ua-va_wtk_us_2c    mr-hr wind model
-20190906-084442_100_dni-dhi_nsrdb_us_2c mr-hr solar model

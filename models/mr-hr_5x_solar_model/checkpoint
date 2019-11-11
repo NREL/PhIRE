@@ -1,0 +1,5 @@
+model_checkpoint_path: "SRGAN"
+all_model_checkpoint_paths: "../SRGAN00013/SRGAN"
+all_model_checkpoint_paths: "../SRGAN00014/SRGAN"
+all_model_checkpoint_paths: "../SRGAN00015/SRGAN"
+all_model_checkpoint_paths: "SRGAN"
