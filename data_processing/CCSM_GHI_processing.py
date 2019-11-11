@@ -20,6 +20,9 @@ def load_nc_file(file_name):
 
 
 if __name__ == '__main__':
+
+    startYear = 2020
+    endYear = 2021
     #CHANGE TO TAKE IN NC FILE AND EXTRACT EVERYTHING NEEDED FROM THERE.
     nsrdb_ghi_avg, latitude, longitude = load_nc_file("rsds_cfDay_CCSM4_1pctCO2_r2i1p1_00200101-00391231.nc")
     print(nsrdb_ghi_avg.shape, latitude.shape, longitude.shape)
@@ -45,6 +48,7 @@ if __name__ == '__main__':
     np.save('ccsm_2020_hourly_ghi.npy', hourly_ghi)
 
     #GET GENERAL SZA
-    sza = sza(latitude, 288, days)
+    tag_sza = sza(latitude, 288, days)
     #CALL THE DISC MODEL. NEED TO CLEAN UP A LOT
-    
+    dni = ghi_decomp(hourl_ghi, tag_sza, startYear, endYear)
+    dhi = 0

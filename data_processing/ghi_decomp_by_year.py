@@ -81,7 +81,7 @@ def worker_func(ind):
     return (i, j, _output)
 
 
-def ghi_decomp(ghi, sza, startYear, endYear):
+def ghi_decomp(input_array_ghi, input_array_sza, startYear, endYear):
 
     if noon in ('solar', 'clock'): # NEED TO CHANGE TO ALLOW FOR LEAP YEARS
         _time_dim = 365
@@ -103,8 +103,8 @@ def ghi_decomp(ghi, sza, startYear, endYear):
     df = df.pivot(index='lon_id', columns='lat_id', values='tz')
 
     # load input arrays
-    input_array_ghi = np.load('ccsm_2020_hourly_ghi_UPDATED90.npy')#[0:24, :, :]
-    input_array_sza = np.load(f'sza_hourly_2020.npy').reshape(8760, 192, 288)#[0:24, :, :]
+    #input_array_ghi = np.load('ccsm_2020_hourly_ghi_UPDATED90.npy')#[0:24, :, :]
+    #input_array_sza = np.load(f'sza_hourly_2020.npy').reshape(8760, 192, 288)#[0:24, :, :]
 
     # cache original shapes
     input_shape_ghi = input_array_ghi.shape
@@ -186,5 +186,5 @@ def ghi_decomp(ghi, sza, startYear, endYear):
     assert not np.sum(np.isnan(out))
 
     np.save(f'dni_{noon}_noon.npy', out.copy(order='C'))
-
+    return out
     #logging.info('complete!')
