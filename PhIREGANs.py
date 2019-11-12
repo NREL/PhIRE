@@ -46,13 +46,7 @@ img_path = '/'.join(['training_imgs', now])
 layerviz_path = '/'.join(['layer_viz_imgs', now])
 log_path ='/'.join(['training_logs', now])
 print("model name: ", model_name)
-#test_data_path ='/'.join(['..', 'data', now])
-test_data_path = "../../../../scratch/kstengel/data/10/" + now + "/"
-
-# Paths for data to load
-train_path = ""
-test_path = ""
-val_path = "" #path to LR WTK val set
+test_data_path ='data_out/''
 
 def pre_train(mu_sig):
     """Pretrain network (i.e., no adversarial component)."""
@@ -458,7 +452,7 @@ def train(mu_sig):
     print('Done.')
 
 
-def test(mu_sig, isCCSM):
+def test(mu_sig, r, model_path, test_path):
     """Run test data through generator and save output."""
 
     print('Initializing network ...', end=' ')
@@ -467,7 +461,6 @@ def test(mu_sig, isCCSM):
     x_LR = tf.placeholder(tf.float32, [None, None, None, 2])
 
     # Set super resolution scaling. Needs to match network architecture
-    r = [2, 5]
 
     # Initialize network and set optimizer
     model = SRGAN(x_LR=x_LR, r=r, status='testing')
@@ -477,7 +470,7 @@ def test(mu_sig, isCCSM):
 
     print('Building data pipeline ...', end=' ')
 
-    ds_test = tf.data.TFRecordDataset(ccsm_test_path)
+    ds_test = tf.data.TFRecordDataset(test_path)
     ds_test = ds_test.map(lambda xx: _parse_val_(xx, mu_sig)).batch(batch_size)
 
     iterator = tf.data.Iterator.from_structure(ds_test.output_types,
@@ -496,7 +489,7 @@ def test(mu_sig, isCCSM):
         #g_saver.restore(sess, '/'.join([model_name, 'pretrain', 'SRGAN_pretrain']))
         #g_saver.restore(sess, '/'.join([model_name, 'SRGAN', 'SRGAN']))
         #g_saver.restore(sess, 'model/20190712-100906_10_ua-va_wtk_us_2c/pretrain02000/SRGAN_pretrain')
-        g_saver.restore(sess, 'model/20190714-214705_10_ua-va_wtk_us_2c/SRGAN00200/SRGAN')
+        g_saver.restore(sess, model_path)
         print('Done.')
 
         print('Running test data ...')
@@ -521,9 +514,10 @@ def test(mu_sig, isCCSM):
 
         if not os.path.exists(test_data_path):
             os.makedirs(test_data_path)
-        np.save(test_data_path+'/CCSM_test_SR.npy', data_out)
+        np.save(test_data_path+'/val_SR.npy', data_out)
 
     print('Done.')
+    return LR_out, data_out
 
 
 # Parser function for data pipeline. May need alternative parser for tfrecords without high-res counterpart
@@ -579,7 +573,7 @@ def _parse_val_(serialized_example, mu_sig=None):
         data_LR = (data_LR - mu_sig[0])/mu_sig[1]
     return idx, data_LR
 
-if __name__ == '__main__':
+def get_mu_sig():
     # Compute mu, sigma for all channels of data
     # NOTE: This includes building a temporary data pipeline and looping through everything.
     #       There's probably a smarter way to do this...
@@ -612,9 +606,6 @@ if __name__ == '__main__':
             pass
     mu_sig = [mu, np.sqrt(sigma)]
     print('Done.')
-
-    #pre_train(mu_sig)
-    #train(mu_sig)
-    test(mu_sig, False)
+    return mu_sig
 
     #ADD SAVE METHOD TO SAVE THE OUTPUTS AS LR SR HR

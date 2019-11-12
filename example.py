@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from PhIREGANs import *
 
 #dummy data
+lr = ""
 
 #set parameters
 r = [2,5] #should be prime factorization of total SR amount ie 2*5 = 10x SR

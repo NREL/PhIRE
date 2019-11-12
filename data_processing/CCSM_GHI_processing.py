@@ -52,3 +52,4 @@ if __name__ == '__main__':
     #CALL THE DISC MODEL. NEED TO CLEAN UP A LOT
     dni = ghi_decomp(hourl_ghi, tag_sza, startYear, endYear)
     dhi = 0
+    #CONCATENATE HERE AND THEN RUN THRU TFRECORD VAL METHOD

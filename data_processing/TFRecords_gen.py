@@ -59,14 +59,13 @@ def generateTrainTFR():
 
     return train
 
-def generateValidTFR(file_prefix, LR_name):
+def generateValidTFR(file_prefix, LR_name, LR_set):
     '''
         generates a TFRecord that only has LR data (ie for use in the SRGANs test function) and no corresponding HR images
 
         inputs:
             file_prefix - where to save the TFRecord to and/or where to load in the LR and MR files from
             LR_set - file name of the LR input
-            hasSurface - boolean telling if the sample has surface roughness
         outputs:
             validation - string of the file name and path to the generated TFRecord
     '''
@@ -93,4 +92,4 @@ if __name__ == '__main__':
     LR_set = 'wtk_4hrRand_us_2007-2013_ua-va_slices_test_LR_10.npy'
     HR_set = 'wtk_4hrRand_us_2007-2013_ua-va_slices_test_MR_100.npy'
     val_set = ''
-    validation_set = generateValidTFR(file_prefix, val_set)
+    validation_set = generateValidTFR(file_prefix, 'validation_LR', val_set)
