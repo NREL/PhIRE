@@ -22,13 +22,6 @@ epoch_shift = 0 # If reloading previously trained network, what epoch to start a
 save_every = 1 # How frequently (in epochs) to save model weights
 print_every = 1000 # How frequently (in iterations) to write out performance
 
-# Set loss function for training
-# loss_type options:
-#         MSE: pixel-wise mean squared error of output (no perceptual losses)
-#          AE: perceptual loss using physics-informed autoencoder
-#    MSEandAE: combination of MSE and AE
-#         VGG: perceptual loss using VGG-19 image classification network
-#   MSEandVGG: combination of MSE and VGG
 loss_type = 'MSE'
 if loss_type in ['AE', 'MSEandAE']:
     loss_model = '../autoencoder/model/latest2d/autoencoder'
@@ -161,7 +154,7 @@ def pre_train(mu_sig):
 
                 g_loss_train = epoch_g_loss/N_train
 
-            # Loop through test data
+            # Loop through test data CAN REMOVE
             sess.run(init_iter_test)
             try:
                 test_out = None
@@ -180,28 +173,7 @@ def pre_train(mu_sig):
                     batch_SR = mu_sig[1]*batch_SR + mu_sig[0]
                     batch_HR = mu_sig[1]*batch_HR + mu_sig[0]
                     if (epoch % save_every) == 0:
-                        nan_arr = np.zeros((batch_HR.shape[1], 10), dtype=np.float32)
-                        nan_arr.fill(np.nan)
-                        nan_arr2 = np.zeros((10, 3*batch_HR.shape[2] + 20), dtype=np.float32)
-                        nan_arr2.fill(np.nan)
-
-                        #for i, idx in enumerate(batch_LR.shape[0]): # NEED TO INDEX ALL THE DATA
                         for i, b_idx in enumerate(batch_idx):
-                            idx_path = '/'.join([img_path, 'pretrain', 'img{0:04d}'.format(b_idx)])
-                            if not os.path.exists(idx_path):
-                                os.makedirs(idx_path)
-                            ua_img = np.concatenate((np.repeat(np.repeat(batch_LR[i, :, :, 0], np.prod(r), axis=0), np.prod(r), axis=1), \
-                                                                          nan_arr, \
-                                                                          batch_SR[i, :, :, 0], \
-                                                                          nan_arr, \
-                                                                          batch_HR[i, :, :, 0]), axis=1)
-                            va_img = np.concatenate((np.repeat(np.repeat(batch_LR[i, :, :, 1], np.prod(r), axis=0), np.prod(r), axis=1), \
-                                                                          nan_arr, \
-                                                                          batch_SR[i, :, :, 1], \
-                                                                          nan_arr, \
-                                                                          batch_HR[i, :, :, 1]), axis=1)
-                            cat_img = np.concatenate((ua_img, nan_arr2, va_img), axis=0)
-                            plt.imsave('/'.join([idx_path, 'epoch{0:05d}'.format(epoch)+'.png']), cat_img, cmap='jet', format='png', origin='lower')
                             if test_out is None:
                                 test_out = np.expand_dims(batch_SR[i], 0)
                             else:
@@ -294,8 +266,8 @@ def train(mu_sig):
 
         print('Loading pre-trained network...', end=' ')
         #g_saver.restore(sess, '/'.join([model, 'pretrain', 'SRGAN_pretrain']))
-        g_saver.restore(sess, 'model/20190714-214705_10_ua-va_wtk_us_2c/SRGAN00200/SRGAN') #'model/20190712-100906_10_ua-va_wtk_us_2c/'
-        #gd_saver.restore(sess, 'model/20190714-214705_10_ua-va_wtk_us_2c/SRGAN00200/SRGAN')
+        g_saver.restore(sess, model_path)
+        #gd_saver.restore(sess, model_path) #if wanting to continue trainging the descriminator if it exists.
         print('Done.')
 
         # Load perceptual loss network data if necessary
@@ -393,33 +365,13 @@ def train(mu_sig):
                     batch_SR = mu_sig[1]*batch_SR + mu_sig[0]
                     batch_HR = mu_sig[1]*batch_HR + mu_sig[0]
                     if (epoch % save_every) == 0:
-                        nan_arr = np.zeros((batch_HR.shape[1], 10), dtype=np.float32)
-                        nan_arr.fill(np.nan)
-                        nan_arr2 = np.zeros((10, 3*batch_HR.shape[2] + 20), dtype=np.float32)
-                        nan_arr2.fill(np.nan)
 
                         #for i, idx in enumerate(batch_LR.shape[0]): # NEED TO INDEX ALL THE DATA
                         for i, b_idx in enumerate(batch_idx):
-                            idx_path = '/'.join([img_path, 'train', 'img{0:04d}'.format(b_idx)])
-                            if not os.path.exists(idx_path):
-                                os.makedirs(idx_path)
-
-                            ua_img = np.concatenate((np.repeat(np.repeat(batch_LR[i, :, :, 0], np.prod(r), axis=0), np.prod(r), axis=1), \
-                                                                          nan_arr, \
-                                                                          batch_SR[i, :, :, 0], \
-                                                                          nan_arr, \
-                                                                          batch_HR[i, :, :, 0]), axis=1)
-                            va_img = np.concatenate((np.repeat(np.repeat(batch_LR[i, :, :, 1], np.prod(r), axis=0), np.prod(r), axis=1), \
-                                                                          nan_arr, \
-                                                                          batch_SR[i, :, :, 1], \
-                                                                          nan_arr, \
-                                                                          batch_HR[i, :, :, 1]), axis=1)
-                            cat_img = np.concatenate((ua_img, nan_arr2, va_img), axis=0)
-                            plt.imsave('/'.join([idx_path, 'epoch{0:05d}'.format(epoch)+'.png']), cat_img, cmap='jet', format='png', origin='lower')
-                            #if test_out is None:
-                            test_out = np.expand_dims(batch_SR[i], 0)
-                            #else:
-                            #test_out = np.concatenate((test_out, np.expand_dims(batch_SR[i], 0)), axis=0)
+                            if test_out is None:
+                                test_out = np.expand_dims(batch_SR[i], 0)
+                            else:
+                                test_out = np.concatenate((test_out, np.expand_dims(batch_SR[i], 0)), axis=0)
                             if not os.path.exists(test_data_path):
                                 os.makedirs(test_data_path)
                             np.save(test_data_path +'/CCSM_test_SR_epoch{0:05d}'.format(i)+'.npy', test_out)
