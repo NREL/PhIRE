@@ -17,7 +17,6 @@ os.environ['KMP_DUPLICATE_LIB_OK']='True'
 
 # Network training meta-parameters
 learning_rate = 1e-4 # Learning rate for gradient descent (may decrease to 1e-5 after initial training)
-batch_size = 5 # Batch size for training (decrease this if you get memory errors, particularly on GPUs)
 N_epochs = 1000 # Number of epochs of training
 epoch_shift = 0 # If reloading previously trained network, what epoch to start at
 save_every = 1 # How frequently (in epochs) to save model weights
@@ -46,7 +45,7 @@ img_path = '/'.join(['training_imgs', now])
 layerviz_path = '/'.join(['layer_viz_imgs', now])
 log_path ='/'.join(['training_logs', now])
 print("model name: ", model_name)
-test_data_path ='data_out/''
+test_data_path ='data_out/'
 
 def pre_train(mu_sig):
     """Pretrain network (i.e., no adversarial component)."""
@@ -452,9 +451,10 @@ def train(mu_sig):
     print('Done.')
 
 
-def test(mu_sig, r, model_path, test_path):
+def PhIRE_test(r, model_path, test_path, batch_size = 100):
     """Run test data through generator and save output."""
 
+    mu_sig = get_mu_sig(test_path, batch_size)
     print('Initializing network ...', end=' ')
     tf.reset_default_graph()
     # Set low-res data place holders
@@ -486,9 +486,6 @@ def test(mu_sig, r, model_path, test_path):
         sess.run(init)
 
         # Load trained model
-        #g_saver.restore(sess, '/'.join([model_name, 'pretrain', 'SRGAN_pretrain']))
-        #g_saver.restore(sess, '/'.join([model_name, 'SRGAN', 'SRGAN']))
-        #g_saver.restore(sess, 'model/20190712-100906_10_ua-va_wtk_us_2c/pretrain02000/SRGAN_pretrain')
         g_saver.restore(sess, model_path)
         print('Done.')
 
@@ -573,16 +570,16 @@ def _parse_val_(serialized_example, mu_sig=None):
         data_LR = (data_LR - mu_sig[0])/mu_sig[1]
     return idx, data_LR
 
-def get_mu_sig():
+def get_mu_sig(data_path, batch_size):
     # Compute mu, sigma for all channels of data
     # NOTE: This includes building a temporary data pipeline and looping through everything.
     #       There's probably a smarter way to do this...
     print('Loading data ...', end=' ')
-    dataset = tf.data.TFRecordDataset(train_path)
-    dataset = dataset.map(_parse_WTK_).batch(batch_size)
+    dataset = tf.data.TFRecordDataset(data_path)
+    dataset = dataset.map(_parse_val_).batch(batch_size)
 
     iterator = dataset.make_one_shot_iterator()
-    _, _, HR_out = iterator.get_next()
+    _, HR_out = iterator.get_next()
     print(HR_out.shape)
     with tf.Session() as sess:
         N, mu, sigma = 0, 0, 0

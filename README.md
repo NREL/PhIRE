@@ -55,3 +55,4 @@ Thank NSRDB, WTK, NREL, CCSM.
 - add in catching errors
 - have each PhIREGANs method return the final output s.t. it can be passed into the next one as needed. also call image_out from utils to save the image (in test)
 - remove solar before making public!
+- make example data files.

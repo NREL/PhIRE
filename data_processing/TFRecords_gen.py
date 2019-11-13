@@ -11,11 +11,12 @@ def _bytes_feature(value):
 def _int64_feature(value):
     return tf.train.Feature(int64_list=tf.train.Int64List(value=[value]))
 
-def generateTestTFR():
+def generateTestTFR(file_prefix, name, LR_set, HR_set):
     tt = 'test'
-     with tf.python_io.TFRecordWriter(file_prefix + tt + res_set_LR +  res_set_HR + '.tfrecord') as writer:
-        data_LR = np.load('')
-        data_HR = np.load(file_prefix + tt + res_set_HR + '.npy')
+    test = file_prefix + '_' + name + tt + '_.tfrecord'
+    with tf.python_io.TFRecordWriter(test) as writer:
+        data_LR = np.load(LR_set)
+        data_HR = np.load(HR_set)
         N,  h_LR, w_LR, c  = data_LR.shape
         N2, h_HR, w_HR, c2 = data_HR.shape
 
@@ -35,11 +36,12 @@ def generateTestTFR():
 
     return test
 
-def generateTrainTFR():
+def generateTrainTFR(file_prefix, name, LR_set, HR_set):
     tt = 'train'
-     with tf.python_io.TFRecordWriter(file_prefix + tt + res_set_LR + res_set_HR + '.tfrecord') as writer:
-        data_LR = np.load('')
-        data_HR = np.load(file_prefix + tt + res_set_HR + '.npy')
+    train = file_prefix + '_' + name + tt + '_.tfrecord'
+    with tf.python_io.TFRecordWriter(train) as writer:
+        data_LR = np.load(LR_set)
+        data_HR = np.load(HR_set)
         N,  h_LR, w_LR, c  = data_LR.shape
         N2, h_HR, w_HR, c2 = data_HR.shape
 
@@ -88,8 +90,8 @@ def generateValidTFR(file_prefix, LR_name, LR_set):
     return validation
 
 if __name__ == '__main__':
-    file_prefix = 'wtk_4hrRand_us_2007-2013_ua-va_slices_'
+    file_prefix = '../test_data/'
     LR_set = 'wtk_4hrRand_us_2007-2013_ua-va_slices_test_LR_10.npy'
     HR_set = 'wtk_4hrRand_us_2007-2013_ua-va_slices_test_MR_100.npy'
-    val_set = ''
-    validation_set = generateValidTFR(file_prefix, 'validation_LR', val_set)
+    val_set = '../test_data/MR_Wind_exampleImg.npy' #ccsm here
+    validation_set = generateValidTFR(file_prefix, 'validation_MR_', val_set)

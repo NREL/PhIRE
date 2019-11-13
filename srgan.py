@@ -2,11 +2,7 @@ import tensorflow as tf
 import numpy as np
 import sys
 sys.path.append('../utils')
-sys.path.append('../autoencoder')
-sys.path.append('../VGG19')
 from layer import *
-from autoencoder2d import autoencoder2d
-from vgg19 import VGG19
 
 class SRGAN(object):
     def __init__(self, x_LR=None, x_HR=None, r=None, status='pre-training', loss_type='MSE'):
