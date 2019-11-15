@@ -30,6 +30,9 @@ model_name = '/'.join(['model', now])
 print("model name: ", model_name)
 data_path ='data_out/' + data_type + "/"
 
+def setDataType(dt):
+    global data_type = dt
+
 def pre_train(mu_sig, r, N_epochs, train_path, model_path = None, epoch_shift = 0, batch_size = 100):
     """Pretrain network (i.e., no adversarial component)."""
     mu_sig, shape = get_mu_sig(train_path, batch_size)

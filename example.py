@@ -15,6 +15,9 @@ r_mr = [5]
 #parameters for LR and MR are the same for solar:
 #r_solar = [5]
 
+#will also need to update the data type to be solar
+#setDataType('solar')
+
 #model paths
 lr_wind_model_path = 'models/lr-mr-10x_wind_model/SRGAN'
 mr_wind_model_path = 'models/mr-hr-5x_wind_model/SRGAN'
