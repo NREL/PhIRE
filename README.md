@@ -45,9 +45,9 @@ Outlines of both the pretraining (no adversarial component) and training (with a
 [3] TensorFlow  
 [4] Python  
 [5] TAG model  
-[6] DISC model
-[7] CCSM ?
-[8] ESGF ? 
+[6] DISC model  
+[7] CCSM ?  
+[8] ESGF ?  
 
 #### Acknowledgments
 Thank NSRDB, WTK, NREL, CCSM.
