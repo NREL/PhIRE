@@ -15,7 +15,7 @@ ___
 
 ##### WIND Toolkit & NSRDB
 LR, MR, and HR wind example data can be found in `example_data/`. These datasets are from NREL's WIND Toolkit. The LR and MR data are to be used with the MR and HR models respectively. If you would like to use your own data for the super-resolution it must have the shape: (None, None, None, [ua, va]). Example NSRDB data can also be found in `example_data/` and can be treated in the same manner as the WIND Toolkit is treated. If you choose to use your own solar data it should have the shape: (None, None, None, [DNI, DHI]).
-The scripts are designed to take in TFRecords. An example of how to convert numpy arrays to TFRecords can be found in `data_processing/TFRecords_gen.py`.
+The scripts are designed to take in TFRecords. An example of how to convert numpy arrays to compatible TFRecords can be found in `data_processing/TFRecords_gen.py`.
 
 ##### CCSM
 If you would like to run the CCSM wind data through the pretrained PhIREGANs models, you can download the data from [here](https://esgf-node.llnl.gov/projects/esgf-llnl/) with the following:
