@@ -93,5 +93,5 @@ if __name__ == '__main__':
     file_prefix = '../test_data/'
     LR_set = 'wtk_4hrRand_us_2007-2013_ua-va_slices_test_LR_10.npy'
     HR_set = 'wtk_4hrRand_us_2007-2013_ua-va_slices_test_MR_100.npy'
-    val_set = '../test_data/MR_Wind_exampleImg.npy' #ccsm here
-    validation_set = generateValidTFR(file_prefix, 'validation_MR_', val_set)
+    val_set = '../test_data/LR_Solar_exampleImg.npy' #ccsm here
+    validation_set = generateValidTFR(file_prefix, 'solar_example_LR_', val_set)

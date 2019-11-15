@@ -1,8 +1,8 @@
 import tensorflow as tf
 import numpy as np
 import sys
-sys.path.append('../utils')
-from layer import *
+sys.path.append('utils')
+from layer import deconv_layer_2d
 
 class SRGAN(object):
     def __init__(self, x_LR=None, x_HR=None, r=None, status='pre-training', loss_type='MSE'):

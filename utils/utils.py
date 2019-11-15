@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from time import time
+import os
 
 def load_data(path=None, N_test=None, seed=11):
     """Load dataset and partition into training and testing data."""
@@ -142,7 +143,10 @@ def image_out(LR, SR, HR, file_name):
 
         plt.subplots_adjust(wspace = wspace, hspace = hspace)
 
-        plt.savefig("../" + file_name + "_"+str(index)+".png", bbox_inches='tight')
+        if not os.path.exists('../data_out/'):
+            os.makedirs('../data_out/')
+
+        plt.savefig('../data_out/' + file_name + "_"+str(index)+".png", bbox_inches='tight')
 
 
 class BatchGenerator:

@@ -37,7 +37,7 @@ def sza(latitude, lon_num, days_in_year):
             declination = 23.45*(np.pi/180)*np.sin(2*np.pi*((284+day)/365.25))
             for hour in range(1, 25):
                 w = (hour - 12.5)*(np.pi/12)
-                sza[j, i] = np.arccos(np.sin(lat)*np.sin(declination) + np.cos(lat)*np.cos(declination)*np.cos(w))
+                sza[j, i] = np.arccos(np.abs(np.sin(lat)*np.sin(declination) + np.cos(lat)*np.cos(declination)*np.cos(w)))
                 j += 1
     #np.save('sza_hourly_2020_2.npy', sza)
     return sza

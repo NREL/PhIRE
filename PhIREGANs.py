@@ -21,8 +21,10 @@ N_epochs = 1000 # Number of epochs of training
 epoch_shift = 0 # If reloading previously trained network, what epoch to start at
 save_every = 1 # How frequently (in epochs) to save model weights
 print_every = 1000 # How frequently (in iterations) to write out performance
+mu_sig = 0
 
 loss_type = 'MSE'
+#REMOVE IN FINAL
 if loss_type in ['AE', 'MSEandAE']:
     loss_model = '../autoencoder/model/latest2d/autoencoder'
     #loss_model = '../autoencoder/model/latest3d/autoencoder'
@@ -40,16 +42,16 @@ log_path ='/'.join(['training_logs', now])
 print("model name: ", model_name)
 test_data_path ='data_out/'
 
-def pre_train(mu_sig):
+def pre_train(mu_sig, r, train_path, batch_size = 100):
     """Pretrain network (i.e., no adversarial component)."""
-
+    mu_sig, shape = get_mu_sig(train_path, batch_size)
+    scale = np.prod(r)
     print('Initializing network ...', end=' ')
     # Set high- and low-res data place holders. Make sure the sizes match the data
-    x_LR = tf.placeholder(tf.float32, [None,  10,  10, 2])
-    x_HR = tf.placeholder(tf.float32, [None, 100, 100, 2])
+    x_LR = tf.placeholder(tf.float32, [None,  shape[1],  shape[2], shape[3]])
+    x_HR = tf.placeholder(tf.float32, [None, shape[1]*scale,  shape[2]*scale, shape[3]])
 
     # Set super resolution scaling. Product of terms in r must match scaling from low-res to high-res.
-    r = [2, 5]
 
     # Initialize network and set optimizer
     model = SRGAN(x_LR, x_HR, r=r, status='pre-training', loss_type=loss_type)
@@ -78,15 +80,15 @@ def pre_train(mu_sig):
 
     # Create summary values for TensorBoard
     g_loss_iters_ph = tf.placeholder(tf.float32, shape=None)
-    g_loss_iters = tf.summary.scalar('g_loss_vs_iters', g_loss_iters_ph)
-    iter_summ = tf.summary.merge([g_loss_iters])
+    #g_loss_iters = tf.summary.scalar('g_loss_vs_iters', g_loss_iters_ph)
+    #iter_summ = tf.summary.merge([g_loss_iters])
 
     g_loss_epoch_ph = tf.placeholder(tf.float32, shape=None)
-    g_loss_epoch = tf.summary.scalar('g_loss_vs_epochs', g_loss_epoch_ph)
-    epoch_summ = tf.summary.merge([g_loss_epoch])
+    #g_loss_epoch = tf.summary.scalar('g_loss_vs_epochs', g_loss_epoch_ph)
+    #epoch_summ = tf.summary.merge([g_loss_epoch])
 
-    summ_train_writer = tf.summary.FileWriter(log_path+'-train', tf.get_default_graph())
-    summ_test_writer  = tf.summary.FileWriter(log_path+'-test',  tf.get_default_graph())
+    #summ_train_writer = tf.summary.FileWriter(log_path+'-train', tf.get_default_graph())
+    #summ_test_writer  = tf.summary.FileWriter(log_path+'-test',  tf.get_default_graph())
 
 
     with tf.Session() as sess:
@@ -102,6 +104,7 @@ def pre_train(mu_sig):
             print('Done.')
 
         # Load perceptual loss network data if necessary
+        #REMOVE IN FINAL
         if loss_type in ['AE', 'MSEandAE', 'VGG', 'MSEandVGG']:
             # Restore perceptual loss network, if necessary
             print('Loading perceptual loss network...', end=' ')
@@ -136,8 +139,8 @@ def pre_train(mu_sig):
                     sess.run(g_train_op, feed_dict={x_HR: batch_HR, x_LR: batch_LR})
                     gl = sess.run(model.g_loss, feed_dict={x_HR: batch_HR, x_LR: batch_LR})
 
-                    summ = sess.run(iter_summ, feed_dict={g_loss_iters_ph: gl})
-                    summ_train_writer.add_summary(summ, iters)
+                    #summ = sess.run(iter_summ, feed_dict={g_loss_iters_ph: gl})
+                    #summ_train_writer.add_summary(summ, iters)
 
                     epoch_g_loss += gl*N_batch
                     N_train += N_batch
@@ -154,7 +157,7 @@ def pre_train(mu_sig):
 
                 g_loss_train = epoch_g_loss/N_train
 
-            # Loop through test data CAN REMOVE
+            # Loop through test data REMOVE IN FINAL
             sess.run(init_iter_test)
             try:
                 test_out = None
@@ -185,14 +188,14 @@ def pre_train(mu_sig):
                 if not os.path.exists(test_data_path):
                     os.makedirs(test_data_path)
                 if (epoch % save_every) == 0:
-                    np.save(test_data_path +'/WTK_test_SR_epoch{0:05d}'.format(epoch)+'.npy', test_out)
+                    np.save(test_data_path +'/test_SR_epoch{0:05d}'.format(epoch)+'.npy', test_out)
 
                 # Write performance to TensorBoard
-                summ = sess.run(epoch_summ, feed_dict={g_loss_epoch_ph: g_loss_train})
-                summ_train_writer.add_summary(summ, epoch)
+                #summ = sess.run(epoch_summ, feed_dict={g_loss_epoch_ph: g_loss_train})
+                #summ_train_writer.add_summary(summ, epoch)
 
-                summ = sess.run(epoch_summ, feed_dict={g_loss_epoch_ph: g_loss_test})
-                summ_test_writer.add_summary(summ, epoch)
+                #summ = sess.run(epoch_summ, feed_dict={g_loss_epoch_ph: g_loss_test})
+                #summ_test_writer.add_summary(summ, epoch)
 
                 print('Epoch took %.2f seconds\n' %(time() - start_time))
 
@@ -202,18 +205,16 @@ def pre_train(mu_sig):
         g_saver.save(sess, '/'.join([model_name, 'pretrain', 'SRGAN_pretrain']))
 
 
-def train(mu_sig):
+def train(mu_sig, r, train_path, batch_size=100):
     """Train network using GANs. Only run this after model has been sufficiently pre-trained."""
-    save_every = 1
+    mu_sig, shape = get_mu_sig(train_path, batch_size)
+    scale = np.prod(r)
     print('Initializing network ...', end=' ')
     tf.reset_default_graph()
 
     # Set high- and low-res data place holders. Make sure the sizes match the data
-    x_LR = tf.placeholder(tf.float32, [None,  10,  10, 2])
-    x_HR = tf.placeholder(tf.float32, [None, 100, 100, 2])
-
-    # Set super resolution scaling. Product of terms in r must match scaling from low-res to high-res.
-    r = [2, 5]
+    x_LR = tf.placeholder(tf.float32, [None,  shape[1],  shape[2], shape[3]])
+    x_HR = tf.placeholder(tf.float32, [None, shape[1]*scale,  shape[2]*scale, shape[3]])
 
     # Initialize network and set optimizer
     model = SRGAN(x_LR, x_HR, r=r, status='training', loss_type=loss_type)
@@ -244,20 +245,20 @@ def train(mu_sig):
     print('Done.')
 
     # Create summary values for TensorBoard
-    g_loss_iters_ph = tf.placeholder(tf.float32, shape=None)
-    d_loss_iters_ph = tf.placeholder(tf.float32, shape=None)
-    g_loss_iters = tf.summary.scalar('g_loss_vs_iters', g_loss_iters_ph)
-    d_loss_iters = tf.summary.scalar('d_loss_vs_iters', d_loss_iters_ph)
-    iter_summ = tf.summary.merge([g_loss_iters, d_loss_iters])
+    #g_loss_iters_ph = tf.placeholder(tf.float32, shape=None)
+    #d_loss_iters_ph = tf.placeholder(tf.float32, shape=None)
+    #g_loss_iters = tf.summary.scalar('g_loss_vs_iters', g_loss_iters_ph)
+    #d_loss_iters = tf.summary.scalar('d_loss_vs_iters', d_loss_iters_ph)
+    #iter_summ = tf.summary.merge([g_loss_iters, d_loss_iters])
 
-    g_loss_epoch_ph = tf.placeholder(tf.float32, shape=None)
-    d_loss_epoch_ph = tf.placeholder(tf.float32, shape=None)
-    g_loss_epoch = tf.summary.scalar('g_loss_vs_epochs', g_loss_epoch_ph)
-    d_loss_epoch = tf.summary.scalar('d_loss_vs_epochs', d_loss_epoch_ph)
-    epoch_summ = tf.summary.merge([g_loss_epoch, d_loss_epoch])
+    #g_loss_epoch_ph = tf.placeholder(tf.float32, shape=None)
+    #d_loss_epoch_ph = tf.placeholder(tf.float32, shape=None)
+    #g_loss_epoch = tf.summary.scalar('g_loss_vs_epochs', g_loss_epoch_ph)
+    #d_loss_epoch = tf.summary.scalar('d_loss_vs_epochs', d_loss_epoch_ph)
+    #epoch_summ = tf.summary.merge([g_loss_epoch, d_loss_epoch])
 
-    summ_train_writer = tf.summary.FileWriter(log_path+'-train', tf.get_default_graph())
-    summ_test_writer  = tf.summary.FileWriter(log_path+'-test',  tf.get_default_graph())
+    #summ_train_writer = tf.summary.FileWriter(log_path+'-train', tf.get_default_graph())
+    #summ_test_writer  = tf.summary.FileWriter(log_path+'-test',  tf.get_default_graph())
 
     with tf.Session() as sess:
         print('Training network ...')
@@ -271,6 +272,7 @@ def train(mu_sig):
         print('Done.')
 
         # Load perceptual loss network data if necessary
+        #REMOVE IN FINAL
         if loss_type in ['AE', 'MSEandAE', 'VGG', 'MSEandVGG']:
             # Restore perceptual loss network, if necessary
             print('Loading perceptual loss network...', end=' ')
@@ -325,8 +327,8 @@ def train(mu_sig):
                         dis_count += 1
 
                     pl, gal = sess.run([model.p_loss, model.g_ad_loss], feed_dict={x_HR: batch_HR, x_LR: batch_LR})
-                    summ = sess.run(iter_summ, feed_dict={g_loss_iters_ph: gl, d_loss_iters_ph: dl})
-                    summ_train_writer.add_summary(summ, iters)
+                    #summ = sess.run(iter_summ, feed_dict={g_loss_iters_ph: gl, d_loss_iters_ph: dl})
+                    #summ_train_writer.add_summary(summ, iters)
 
                     epoch_g_loss += gl*N_batch
                     epoch_d_loss += dl*N_batch
@@ -346,7 +348,7 @@ def train(mu_sig):
                 g_loss_train = epoch_g_loss/N_train
                 d_loss_train = epoch_d_loss/N_train
 
-            # Loop through test data
+            # Loop through test data REMOVE IN FINAL
             sess.run(init_iter_test)
             try:
                 test_out = None
@@ -374,7 +376,7 @@ def train(mu_sig):
                                 test_out = np.concatenate((test_out, np.expand_dims(batch_SR[i], 0)), axis=0)
                             if not os.path.exists(test_data_path):
                                 os.makedirs(test_data_path)
-                            np.save(test_data_path +'/CCSM_test_SR_epoch{0:05d}'.format(i)+'.npy', test_out)
+                            np.save(test_data_path +'/test_SR_epoch{0:05d}'.format(i)+'.npy', test_out)
             except tf.errors.OutOfRangeError:
 
                 g_loss_test = epoch_g_loss/N_test
@@ -387,11 +389,11 @@ def train(mu_sig):
                 '''
 
                 # Write performance to TensorBoard
-                summ = sess.run(epoch_summ, feed_dict={g_loss_epoch_ph: g_loss_train, d_loss_epoch_ph: d_loss_train})
-                summ_train_writer.add_summary(summ, epoch)
+                #summ = sess.run(epoch_summ, feed_dict={g_loss_epoch_ph: g_loss_train, d_loss_epoch_ph: d_loss_train})
+                #summ_train_writer.add_summary(summ, epoch)
 
-                summ = sess.run(epoch_summ, feed_dict={g_loss_epoch_ph: g_loss_test, d_loss_epoch_ph: d_loss_test})
-                summ_test_writer.add_summary(summ, epoch)
+                #summ = sess.run(epoch_summ, feed_dict={g_loss_epoch_ph: g_loss_test, d_loss_epoch_ph: d_loss_test})
+                #summ_test_writer.add_summary(summ, epoch)
 
                 print('Epoch took %.2f seconds\n' %(time() - start_time))
 
@@ -403,10 +405,9 @@ def train(mu_sig):
     print('Done.')
 
 
-def PhIRE_test(r, model_path, test_path, batch_size = 100):
+def PhIRE_test(r, model_path, test_path, train_path, batch_size = 100):
     """Run test data through generator and save output."""
 
-    mu_sig = get_mu_sig(test_path, batch_size)
     print('Initializing network ...', end=' ')
     tf.reset_default_graph()
     # Set low-res data place holders
@@ -555,6 +556,6 @@ def get_mu_sig(data_path, batch_size):
             pass
     mu_sig = [mu, np.sqrt(sigma)]
     print('Done.')
-    return mu_sig
+    return mu_sig, data_HR.shape
 
     #ADD SAVE METHOD TO SAVE THE OUTPUTS AS LR SR HR
