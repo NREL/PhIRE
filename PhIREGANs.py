@@ -17,41 +17,28 @@ os.environ['KMP_DUPLICATE_LIB_OK']='True'
 
 # Network training meta-parameters
 learning_rate = 1e-4 # Learning rate for gradient descent (may decrease to 1e-5 after initial training)
-N_epochs = 1000 # Number of epochs of training
-epoch_shift = 0 # If reloading previously trained network, what epoch to start at
-save_every = 1 # How frequently (in epochs) to save model weights
+save_every = 100 # How frequently (in epochs) to save model weights
 print_every = 1000 # How frequently (in iterations) to write out performance
-mu_sig = 0
+mu_sig = [0, 0.0]
 
+data_type = 'wind'
 loss_type = 'MSE'
-#REMOVE IN FINAL
-if loss_type in ['AE', 'MSEandAE']:
-    loss_model = '../autoencoder/model/latest2d/autoencoder'
-    #loss_model = '../autoencoder/model/latest3d/autoencoder'
-elif loss_type in ['VGG', 'MSEandVGG']:
-    loss_model = '../VGG19/model/vgg19'
 
 # Set various paths for where to save data
-data_type = 'ua-va_wtk'
-trainOn_testOn = "_10_"+ data_type +"_us_2c"
-now = strftime('%Y%m%d-%H%M%S') + trainOn_testOn
+now = strftime('%Y%m%d-%H%M%S')
 model_name = '/'.join(['model', now])
-img_path = '/'.join(['training_imgs', now])
-layerviz_path = '/'.join(['layer_viz_imgs', now])
-log_path ='/'.join(['training_logs', now])
 print("model name: ", model_name)
-test_data_path ='data_out/'
+data_path ='data_out/' + data_type + "/"
 
-def pre_train(mu_sig, r, train_path, batch_size = 100):
+def pre_train(mu_sig, r, N_epochs, train_path, model_path = None, epoch_shift = 0, batch_size = 100):
     """Pretrain network (i.e., no adversarial component)."""
     mu_sig, shape = get_mu_sig(train_path, batch_size)
     scale = np.prod(r)
+
     print('Initializing network ...', end=' ')
     # Set high- and low-res data place holders. Make sure the sizes match the data
     x_LR = tf.placeholder(tf.float32, [None,  shape[1],  shape[2], shape[3]])
     x_HR = tf.placeholder(tf.float32, [None, shape[1]*scale,  shape[2]*scale, shape[3]])
-
-    # Set super resolution scaling. Product of terms in r must match scaling from low-res to high-res.
 
     # Initialize network and set optimizer
     model = SRGAN(x_LR, x_HR, r=r, status='pre-training', loss_type=loss_type)
@@ -78,43 +65,16 @@ def pre_train(mu_sig, r, train_path, batch_size = 100):
     init_iter_test  = iterator.make_initializer(ds_test)
     print('Done.')
 
-    # Create summary values for TensorBoard
-    g_loss_iters_ph = tf.placeholder(tf.float32, shape=None)
-    #g_loss_iters = tf.summary.scalar('g_loss_vs_iters', g_loss_iters_ph)
-    #iter_summ = tf.summary.merge([g_loss_iters])
-
-    g_loss_epoch_ph = tf.placeholder(tf.float32, shape=None)
-    #g_loss_epoch = tf.summary.scalar('g_loss_vs_epochs', g_loss_epoch_ph)
-    #epoch_summ = tf.summary.merge([g_loss_epoch])
-
-    #summ_train_writer = tf.summary.FileWriter(log_path+'-train', tf.get_default_graph())
-    #summ_test_writer  = tf.summary.FileWriter(log_path+'-test',  tf.get_default_graph())
-
-
     with tf.Session() as sess:
         print('Training network ...')
 
         sess.run(init)
 
         # Load previously trained network
-        #g_saver.restore(sess, 'model/pretrain/SRGAN')
         if epoch_shift > 0:
+            assert model_path is not None, "need to provide a path to load model weights."
             print('Loading pre-trained network...', end=' ')
-            g_saver.restore(sess, 'model/pretrain/SRGAN')
-            print('Done.')
-
-        # Load perceptual loss network data if necessary
-        #REMOVE IN FINAL
-        if loss_type in ['AE', 'MSEandAE', 'VGG', 'MSEandVGG']:
-            # Restore perceptual loss network, if necessary
-            print('Loading perceptual loss network...', end=' ')
-            var = tf.global_variables()
-            if loss_type in ['AE', 'MSEandAE']:
-                loss_var = [var_ for var_ in var if 'encoder' in var_.name]
-            elif loss_type in ['VGG', 'MSEandVGG']:
-                loss_var = [var_ for var_ in var if 'vgg19' in var_.name]
-            saver = tf.train.Saver(var_list=loss_var)
-            saver.restore(sess, loss_model)
+            g_saver.restore(sess, model_path)
             print('Done.')
 
         # Start training
@@ -135,12 +95,8 @@ def pre_train(mu_sig, r, train_path, batch_size = 100):
 
                     batch_SR = sess.run(model.x_SR, feed_dict={x_HR:batch_HR, x_LR:batch_LR})
 
-                    #print(np.min(batch_SR), np.mean(batch_SR), np.max(batch_SR))
                     sess.run(g_train_op, feed_dict={x_HR: batch_HR, x_LR: batch_LR})
                     gl = sess.run(model.g_loss, feed_dict={x_HR: batch_HR, x_LR: batch_LR})
-
-                    #summ = sess.run(iter_summ, feed_dict={g_loss_iters_ph: gl})
-                    #summ_train_writer.add_summary(summ, iters)
 
                     epoch_g_loss += gl*N_batch
                     N_train += N_batch
@@ -157,45 +113,8 @@ def pre_train(mu_sig, r, train_path, batch_size = 100):
 
                 g_loss_train = epoch_g_loss/N_train
 
-            # Loop through test data REMOVE IN FINAL
-            sess.run(init_iter_test)
-            try:
-                test_out = None
-                epoch_g_loss, N_test = 0, 0
-                while True:
-                    batch_idx, batch_LR, batch_HR = sess.run([idx, LR_out, HR_out])
-                    N_batch = batch_LR.shape[0]
-
-                    batch_SR, gl = sess.run([model.x_SR, model.g_loss], feed_dict={x_HR: batch_HR, x_LR: batch_LR})
-
-                    epoch_g_loss += gl*N_batch
-                    N_test += N_batch
-                    print("line 180, ", type(mu_sig[1]), type(mu_sig[0]), np.amin(batch_LR), np.mean(batch_LR), np.amax(batch_LR))
-
-                    batch_LR = mu_sig[1]*batch_LR + mu_sig[0]
-                    batch_SR = mu_sig[1]*batch_SR + mu_sig[0]
-                    batch_HR = mu_sig[1]*batch_HR + mu_sig[0]
-                    if (epoch % save_every) == 0:
-                        for i, b_idx in enumerate(batch_idx):
-                            if test_out is None:
-                                test_out = np.expand_dims(batch_SR[i], 0)
-                            else:
-                                test_out = np.concatenate((test_out, np.expand_dims(batch_SR[i], 0)), axis=0)
-
             except tf.errors.OutOfRangeError:
                 g_loss_test = epoch_g_loss/N_test
-
-                if not os.path.exists(test_data_path):
-                    os.makedirs(test_data_path)
-                if (epoch % save_every) == 0:
-                    np.save(test_data_path +'/test_SR_epoch{0:05d}'.format(epoch)+'.npy', test_out)
-
-                # Write performance to TensorBoard
-                #summ = sess.run(epoch_summ, feed_dict={g_loss_epoch_ph: g_loss_train})
-                #summ_train_writer.add_summary(summ, epoch)
-
-                #summ = sess.run(epoch_summ, feed_dict={g_loss_epoch_ph: g_loss_test})
-                #summ_test_writer.add_summary(summ, epoch)
 
                 print('Epoch took %.2f seconds\n' %(time() - start_time))
 
@@ -205,7 +124,8 @@ def pre_train(mu_sig, r, train_path, batch_size = 100):
         g_saver.save(sess, '/'.join([model_name, 'pretrain', 'SRGAN_pretrain']))
 
 
-def train(mu_sig, r, train_path, batch_size=100):
+def train(mu_sig, r, N_epochs, train_path, model_path = None, epoch_shift = 0, batch_size = 100):
+
     """Train network using GANs. Only run this after model has been sufficiently pre-trained."""
     mu_sig, shape = get_mu_sig(train_path, batch_size)
     scale = np.prod(r)
@@ -244,46 +164,15 @@ def train(mu_sig, r, train_path, batch_size=100):
     init_iter_test  = iterator.make_initializer(ds_test)
     print('Done.')
 
-    # Create summary values for TensorBoard
-    #g_loss_iters_ph = tf.placeholder(tf.float32, shape=None)
-    #d_loss_iters_ph = tf.placeholder(tf.float32, shape=None)
-    #g_loss_iters = tf.summary.scalar('g_loss_vs_iters', g_loss_iters_ph)
-    #d_loss_iters = tf.summary.scalar('d_loss_vs_iters', d_loss_iters_ph)
-    #iter_summ = tf.summary.merge([g_loss_iters, d_loss_iters])
-
-    #g_loss_epoch_ph = tf.placeholder(tf.float32, shape=None)
-    #d_loss_epoch_ph = tf.placeholder(tf.float32, shape=None)
-    #g_loss_epoch = tf.summary.scalar('g_loss_vs_epochs', g_loss_epoch_ph)
-    #d_loss_epoch = tf.summary.scalar('d_loss_vs_epochs', d_loss_epoch_ph)
-    #epoch_summ = tf.summary.merge([g_loss_epoch, d_loss_epoch])
-
-    #summ_train_writer = tf.summary.FileWriter(log_path+'-train', tf.get_default_graph())
-    #summ_test_writer  = tf.summary.FileWriter(log_path+'-test',  tf.get_default_graph())
-
     with tf.Session() as sess:
         print('Training network ...')
 
         sess.run(init)
 
         print('Loading pre-trained network...', end=' ')
-        #g_saver.restore(sess, '/'.join([model, 'pretrain', 'SRGAN_pretrain']))
         g_saver.restore(sess, model_path)
-        #gd_saver.restore(sess, model_path) #if wanting to continue trainging the descriminator if it exists.
+        #gd_saver.restore(sess, model_path) #if wanting to continue training the descriminator if it exists.
         print('Done.')
-
-        # Load perceptual loss network data if necessary
-        #REMOVE IN FINAL
-        if loss_type in ['AE', 'MSEandAE', 'VGG', 'MSEandVGG']:
-            # Restore perceptual loss network, if necessary
-            print('Loading perceptual loss network...', end=' ')
-            var = tf.global_variables()
-            if loss_type in ['AE', 'MSEandAE']:
-                loss_var = [var_ for var_ in var if 'encoder' in var_.name]
-            elif loss_type in ['VGG', 'MSEandVGG']:
-                loss_var = [var_ for var_ in var if 'vgg19' in var_.name]
-            saver = tf.train.Saver(var_list=loss_var)
-            saver.restore(sess, loss_model)
-            print('Done.')
 
         iters = 0
         for epoch in range(epoch_shift+1, epoch_shift+N_epochs+1):
@@ -327,8 +216,6 @@ def train(mu_sig, r, train_path, batch_size=100):
                         dis_count += 1
 
                     pl, gal = sess.run([model.p_loss, model.g_ad_loss], feed_dict={x_HR: batch_HR, x_LR: batch_LR})
-                    #summ = sess.run(iter_summ, feed_dict={g_loss_iters_ph: gl, d_loss_iters_ph: dl})
-                    #summ_train_writer.add_summary(summ, iters)
 
                     epoch_g_loss += gl*N_batch
                     epoch_d_loss += dl*N_batch
@@ -348,52 +235,10 @@ def train(mu_sig, r, train_path, batch_size=100):
                 g_loss_train = epoch_g_loss/N_train
                 d_loss_train = epoch_d_loss/N_train
 
-            # Loop through test data REMOVE IN FINAL
-            sess.run(init_iter_test)
-            try:
-                test_out = None
-                epoch_g_loss, epoch_d_loss, N_test = 0, 0, 0
-                while True:
-                    batch_idx, batch_LR, batch_HR = sess.run([idx, LR_out, HR_out])
-                    N_batch = batch_LR.shape[0]
-
-                    batch_SR, gl, dl = sess.run([model.x_SR, model.g_loss, model.d_loss], feed_dict={x_LR: batch_LR, x_HR: batch_HR})
-
-
-                    epoch_g_loss += gl*N_batch
-                    epoch_d_loss += dl*N_batch
-                    N_test += N_batch
-                    batch_LR = mu_sig[1]*batch_LR + mu_sig[0]
-                    batch_SR = mu_sig[1]*batch_SR + mu_sig[0]
-                    batch_HR = mu_sig[1]*batch_HR + mu_sig[0]
-                    if (epoch % save_every) == 0:
-
-                        #for i, idx in enumerate(batch_LR.shape[0]): # NEED TO INDEX ALL THE DATA
-                        for i, b_idx in enumerate(batch_idx):
-                            if test_out is None:
-                                test_out = np.expand_dims(batch_SR[i], 0)
-                            else:
-                                test_out = np.concatenate((test_out, np.expand_dims(batch_SR[i], 0)), axis=0)
-                            if not os.path.exists(test_data_path):
-                                os.makedirs(test_data_path)
-                            np.save(test_data_path +'/test_SR_epoch{0:05d}'.format(i)+'.npy', test_out)
             except tf.errors.OutOfRangeError:
 
                 g_loss_test = epoch_g_loss/N_test
                 d_loss_test = epoch_d_loss/N_test
-
-                '''if not os.path.exists(test_data_path):
-                    os.makedirs(test_data_path)
-                if (epoch % save_every) == 0:
-                    np.save(test_data_path +'/WTK_test_SR_epoch{0:05d}'.format(epoch)+'.npy', test_out)
-                '''
-
-                # Write performance to TensorBoard
-                #summ = sess.run(epoch_summ, feed_dict={g_loss_epoch_ph: g_loss_train, d_loss_epoch_ph: d_loss_train})
-                #summ_train_writer.add_summary(summ, epoch)
-
-                #summ = sess.run(epoch_summ, feed_dict={g_loss_epoch_ph: g_loss_test, d_loss_epoch_ph: d_loss_test})
-                #summ_test_writer.add_summary(summ, epoch)
 
                 print('Epoch took %.2f seconds\n' %(time() - start_time))
 
@@ -405,7 +250,7 @@ def train(mu_sig, r, train_path, batch_size=100):
     print('Done.')
 
 
-def PhIRE_test(r, model_path, test_path, train_path, batch_size = 100):
+def PhIRE_test(r, model_path, test_path, batch_size = 100):
     """Run test data through generator and save output."""
 
     print('Initializing network ...', end=' ')
@@ -464,13 +309,13 @@ def PhIRE_test(r, model_path, test_path, train_path, batch_size = 100):
 
         if not os.path.exists(test_data_path):
             os.makedirs(test_data_path)
-        np.save(test_data_path+'/val_SR.npy', data_out)
+        np.save(test_data_path+'/validation_SR.npy', data_out)
 
     print('Done.')
     return LR_out, data_out
 
 
-# Parser function for data pipeline. May need alternative parser for tfrecords without high-res counterpart
+# Parser functions for data pipeline
 def _parse_train_(serialized_example, mu_sig=None):
     feature = {'index': tf.FixedLenFeature([], tf.int64),
              'data_LR': tf.FixedLenFeature([], tf.string),
@@ -557,5 +402,3 @@ def get_mu_sig(data_path, batch_size):
     mu_sig = [mu, np.sqrt(sigma)]
     print('Done.')
     return mu_sig, data_HR.shape
-
-    #ADD SAVE METHOD TO SAVE THE OUTPUTS AS LR SR HR

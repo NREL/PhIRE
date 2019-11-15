@@ -34,7 +34,7 @@ Model weights can be found in `models/`. The wind MR and HR models perform a 10x
 An example of how to use the PhIRE GANs model can be found in `example.py`.
 It is recommended that data is loaded in as a TFRecord (see Data).
 Give more of a description here - load in data, run test.
-Both the pretraining (no adversarial component) and training (with adversarial component) are included in the `PhIREGANs.py` script but their use is not demonstrated in `example.py`.
+Outlines of both the pretraining (no adversarial component) and training (with adversarial component) are included in the `PhIREGANs.py` script but their use is not demonstrated in `example.py`.
 
 #### References
 [1] Our paper here  
