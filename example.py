@@ -8,9 +8,12 @@ from utils import *
 lr = "test_data/wind_example_LR_validation.tfrecord"
 mr = "test_data/wind_example_MR_validation.tfrecord"
 
-#set parameters
+#set parameters for wind
 r_lr = [2,5] #should be prime factorization of total SR amount ie 2*5 = 10x SR
 r_mr = [5]
+
+#parameters for LR and MR are the same for solar:
+#r_solar = [5]
 
 #model paths
 lr_wind_model_path = 'models/lr-mr-10x_wind_model/SRGAN'
