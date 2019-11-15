@@ -13,8 +13,8 @@ ___
 
 ### Data
 
-##### WIND Toolkit
-LR, MR, and HR wind example data can be found in `example_data/`. These datasets are from NREL's WIND Toolkit. The LR and MR data are to be used with the MR and HR models respectively. If you would like to use your own data for the super-resolution it must have the shape: (None, None, None, 2).
+##### WIND Toolkit & NSRDB
+LR, MR, and HR wind example data can be found in `example_data/`. These datasets are from NREL's WIND Toolkit. The LR and MR data are to be used with the MR and HR models respectively. If you would like to use your own data for the super-resolution it must have the shape: (None, None, None, [ua, va]). Example NSRDB data can also be found in `example_data/` and can be treated in the same manner as the WIND Toolkit is treated. If you choose to use your own solar data it should have the shape: (None, None, None, [DNI, DHI]).
 The scripts are designed to take in TFRecords. An example of how to convert numpy arrays to TFRecords can be found in `data_processing/TFRecords_gen.py`.
 
 ##### CCSM
@@ -28,7 +28,7 @@ If you would like to run the CCSM wind data through the pretrained PhIREGANs mod
 - version : 20130218
 - variables: ua, va (for wind), and rsds (for solar)
 
-When super-resolving the ua and va the CCSM data should be formatted as : (None, None, None, [ua, va]). The CCSM rsds is the model's value for GHI and will need to be decomposed into DNI and DHI and shaped as : (None, None, None, [DNI, DHI]). The script (implementation of of TAG and DISC models) to do this can be found in `data_processing/CCSM_GHI_processing.py`.
+When super-resolving the ua and va the CCSM data should be formatted the same way as the WIND Toolkit: (None, None, None, [ua, va]). The CCSM rsds is the model's value for GHI and will need to be decomposed into DNI and DHI and shaped as: (None, None, None, [DNI, DHI]). The script (implementation of of TAG and DISC models) to do this can be found in `data_processing/CCSM_GHI_processing.py`.
 
 ### Model Weights
 Model weights can be found in `models/`. The wind MR and HR models perform a 10x and 5x super-resolution respectively while both solar models perform a 5x super-resolution. Each model is designed to work on the distance scales they were trained on (100 to 10km or 10km to 2km/4km). If you wish to have a different amount of super-resolution you must train the models accordingly.
