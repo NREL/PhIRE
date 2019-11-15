@@ -46,16 +46,8 @@ Outlines of both the pretraining (no adversarial component) and training (with a
 [4] Python  
 [5] TAG model  
 [6] DISC model
-[7] CCSM
-[8] ESGF
+[7] CCSM ?
+[8] ESGF ? 
 
 #### Acknowledgments
 Thank NSRDB, WTK, NREL, CCSM.
-
-##### Todo:
-- make code flexible for argument inputs
-- make code flexible for surface roughness inputs
-- add in catching errors
-- have each PhIREGANs method return the final output s.t. it can be passed into the next one as needed. also call image_out from utils to save the image (in test)
-- remove solar before making public!
-- make example data files.
