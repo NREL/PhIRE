@@ -258,8 +258,6 @@ def PhIRE_test(r, model_path, test_path, batch_size = 100):
     # Set low-res data place holders
     x_LR = tf.placeholder(tf.float32, [None, None, None, 2])
 
-    # Set super resolution scaling. Needs to match network architecture
-
     # Initialize network and set optimizer
     model = SRGAN(x_LR=x_LR, r=r, status='testing')
     init = tf.global_variables_initializer()

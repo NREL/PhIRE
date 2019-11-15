@@ -4,9 +4,12 @@ ___
 ### Requirements
 - Python v3.7
 - TensorFlow v1.13.1
-- Recommended
+- Recommended:
     - numpy v1.16.3
     - matplotlib v3.0.3
+- for data processing:
+    - netCDF4
+    - pvlib
 
 ### Data
 
