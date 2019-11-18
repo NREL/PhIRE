@@ -48,8 +48,8 @@ Outlines of both the pretraining (no adversarial component) and training (with a
 [7] Meehl, Gerald A., "CCSM4 model run for CMIP5 with 1\% increasing CO2" (2014). NCAR. doi:10.1594/WDCC/CMIP5.NRS4c1. Served by ESGF (Version 2) [Data set]. World Data Center for Climate (WDCC) at DKRZ.  
 [8] Taylor, Karl E., Ronald J. Stouffer, and Gerald A. Meehl. "An overview of CMIP5 and the experiment design." Bulletin of the American Meteorological Society 93.4 (2012): 485-498.  
 [9] Cinquini, Luca, et al. "The Earth System Grid Federation: An open infrastructure for access to distributed geospatial data." Future Generation Computer Systems 36 (2014): 400-417.  
-[10] WTK
-[11] NSRDB
+[10] Draxl, Caroline, et al. "The wind integration national dataset (wind) toolkit." Applied Energy 151 (2015): 355-366.
+[11] Sengupta, Manajit, et al. "The national solar radiation data base (NSRDB)." Renewable and Sustainable Energy Reviews 89 (2018): 51-60.
 
 #### Acknowledgments
 We acknowledge the World Climate Research Program’s Working Group on Coupled Modelling, which is responsible for CMIP, and we thank the climate modeling groups (listed CCSM section) for producing and making available their model output. For CMIP the U.S. Department of Energy’s Program for Climate Model Diagnosis and Intercomparison provides coordinating support and led development of software infrastructure in partnership with the Global Organization for Earth System Science Portals.
