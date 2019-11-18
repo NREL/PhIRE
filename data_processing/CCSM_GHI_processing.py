@@ -51,5 +51,7 @@ if __name__ == '__main__':
     tag_sza = sza(latitude, 288, days)
     #CALL THE DISC MODEL. NEED TO CLEAN UP A LOT
     dni = ghi_decomp(hourl_ghi, tag_sza, startYear, endYear)
-    dhi = 0
+    dhi = hourl_ghi - dni*np.cos(tag_sza) #DHI=GHI−DNI∗cos(θ)
     #CONCATENATE HERE AND THEN RUN THRU TFRECORD VAL METHOD
+    dni_dhi = np.concatenate((dni, dhi), axis = 3)
+    np.save("ccsm_2020_hourly_dni_dhi.npy", dni_dhi)
