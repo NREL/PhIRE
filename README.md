@@ -39,7 +39,7 @@ Give more of a description here - load in data, run test.
 Outlines of both the pretraining (no adversarial component) and training (with adversarial component) are included in the `PhIREGANs.py` script but their use is not demonstrated in `main.py`.
 
 #### References
-[1] Stengel K., Glaws A., Hettinger D., King R. "Physics-informed super-resolution of climatological wind and solar data". 2019
+[1] Stengel K., Glaws A., Hettinger D., King R. "Physics-informed super-resolution of climatological wind and solar data". 2019  
 [2] Ledig, Christian, et al. "Photo-realistic single image super-resolution using a generative adversarial network." Proceedings of the IEEE conference on computer vision and pattern recognition. 2017.  
 [4] Aguiar, R., and M. T. A. G. Collares-Pereira. "TAG: a time-dependent, autoregressive, Gaussian model for generating synthetic hourly radiation." Solar energy 49.3 (1992): 167-174.  
 [5] Maxwell, E.,"DISC Model." Excel Worksheet [link](https://www.nrel.gov/grid/solar-resource/disc.html)  
@@ -47,7 +47,7 @@ Outlines of both the pretraining (no adversarial component) and training (with a
 [7] Meehl, Gerald A., "CCSM4 model run for CMIP5 with 1\% increasing CO2" (2014). NCAR. doi:10.1594/WDCC/CMIP5.NRS4c1. Served by ESGF (Version 2) [Data set]. World Data Center for Climate (WDCC) at DKRZ.  
 [8] Taylor, Karl E., Ronald J. Stouffer, and Gerald A. Meehl. "An overview of CMIP5 and the experiment design." Bulletin of the American Meteorological Society 93.4 (2012): 485-498.  
 [9] Cinquini, Luca, et al. "The Earth System Grid Federation: An open infrastructure for access to distributed geospatial data." Future Generation Computer Systems 36 (2014): 400-417.  
-[10] Draxl, Caroline, et al. "The wind integration national dataset (wind) toolkit." Applied Energy 151 (2015): 355-366.
+[10] Draxl, Caroline, et al. "The wind integration national dataset (wind) toolkit." Applied Energy 151 (2015): 355-366.  
 [11] Sengupta, Manajit, et al. "The national solar radiation data base (NSRDB)." Renewable and Sustainable Energy Reviews 89 (2018): 51-60.
 
 #### Acknowledgments
