@@ -80,31 +80,10 @@ class PhIREGANs:
     def set_test_data_path(self, in_data_path):
         self.test_data_path = in_data_path
 
-    def roughnessGrabber(self, lat, lon, shape, surfRoughPath):
-        roughness_out = None
-        lat_coords, lon_coords = None, None
-
-        roughness = np.load(surfRoughPath)
-
-        for i in range(lat.shape[0]):
-            lat_coords = np.where(roughness[:,:,0] == lat[i,:])
-            lon_coords = np.where(roughness[:,:,1] == lon[i,:])
-
-            r = roughness[lat_coords[0][0]:lat_coords[0][0]+shape[1], lon_coords[1][0]:lon_coords[1][0]+shape[2], 2]
-
-            if roughness_out is None:
-                roughness_out = np.reshape(r, (1, r.shape[0], r.shape[1], 1))
-            else:
-                roughness_out = np.concatenate((roughness_out, np.reshape(r, (1, r.shape[0], r.shape[1], 1))), axis = 0)
-        return roughness_out
-
-    def pre_train(self, r, train_path, test_path, model_path, surfRough_path = None, batch_size = 100):
+    def pre_train(self, r, train_path, test_path, model_path, batch_size = 100):
 
         """Pretrain network (i.e., no adversarial component)."""
         print("model name: ", self.model_name)
-        hasSurfRoughness = False
-        if surfRough_path is not None:
-            hasSurfRoughness = True
         self.set_mu_sig(train_path, batch_size)
         scale = np.prod(r)
 
@@ -112,18 +91,9 @@ class PhIREGANs:
         # Set high- and low-res data place holders. Make sure the sizes match the data
         x_LR = tf.placeholder(tf.float32, [None,  self.LR_data_shape[1],  self.LR_data_shape[2], self.LR_data_shape[3]])
         x_HR = tf.placeholder(tf.float32, [None, self.LR_data_shape[1]*scale,  self.LR_data_shape[2]*scale, self.LR_data_shape[3]])
-        x_rough = None
-        model = None
-        idx, LR_out, HR_out, lat, lon = None, None, None, None, None
-
-        # if hasSurfRoughness is true then do the stuff for setting up everything w/ surface roughness
-        if hasSurfRoughness is True:
-            x_rough = tf.placeholder(tf.float32, [None, self.LR_data_shape[1]*scale,  self.LR_data_shape[2]*scale, 1])
-            # Initialize network and set optimizer
-            model = SRGAN_surfRough(x_LR, x_HR, x_rough, r=r, status='pre-training', loss_type= self.loss_type)
-        else:
-            # Initialize network and set optimizer
-            model = SRGAN(x_LR, x_HR, r=r, status='pre-training', loss_type= self.loss_type)
+        
+        # Initialize network and set optimizer
+        model = SRGAN(x_LR, x_HR, r=r, status='pre-training', loss_type= self.loss_type)
 
         optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
         g_train_op = optimizer.minimize(model.g_loss, var_list= model.g_variables)
@@ -137,22 +107,13 @@ class PhIREGANs:
         print('Building data pipeline ...', end=' ')
         ds_train = tf.data.TFRecordDataset(train_path)
         ds_test = tf.data.TFRecordDataset(test_path)
-        iterator = None
 
-        if hasSurfRoughness is True:
-            ds_train = ds_train.map(lambda xx: self._parse_train_SurfRough_(xx, self.mu_sig)).shuffle(1000).batch(batch_size)
-            ds_test = ds_test.map(lambda xx: self._parse_train_SurfRough_(xx, self.mu_sig)).batch(batch_size)
+        ds_train = ds_train.map(lambda xx: self._parse_train_(xx, self.mu_sig)).shuffle(1000).batch(batch_size)
+        ds_test = ds_test.map(lambda xx: self._parse_train_(xx, self.mu_sig)).batch(batch_size)
 
-            iterator = tf.data.Iterator.from_structure(ds_train.output_types,
-                                                       ds_train.output_shapes)
-            idx, LR_out, HR_out, lat, lon = iterator.get_next()
-        else:
-            ds_train = ds_train.map(lambda xx: self._parse_train_(xx, self.mu_sig)).shuffle(1000).batch(batch_size)
-            ds_test = ds_test.map(lambda xx: self._parse_train_(xx, self.mu_sig)).batch(batch_size)
-
-            iterator = tf.data.Iterator.from_structure(ds_train.output_types,
+        iterator = tf.data.Iterator.from_structure(ds_train.output_types,
                                                    ds_train.output_shapes)
-            idx, LR_out, HR_out = iterator.get_next()
+        idx, LR_out, HR_out = iterator.get_next()
 
         init_iter_train = iterator.make_initializer(ds_train)
         init_iter_test  = iterator.make_initializer(ds_test)
@@ -207,22 +168,11 @@ class PhIREGANs:
                     while True:
                         iters += 1
 
-                        batch_idx, batch_LR, batch_HR, batch_lat, batch_lon = None, None, None, None, None
-                        batch_rough = None
-                        #print(batch_HR.shape)
-                        if hasSurfRoughness is True:
-                            batch_idx, batch_LR, batch_HR, batch_lat, batch_lon = sess.run([idx, LR_out, HR_out, lat, lon])
-                            print(batch_HR.shape)
-                            batch_rough = self.roughnessGrabber(batch_lat, batch_lon, batch_HR.shape, surfRough_path)
-                        else:
-                            batch_idx, batch_LR, batch_HR = sess.run([idx, LR_out, HR_out])
+                        batch_idx, batch_LR, batch_HR = sess.run([idx, LR_out, HR_out])
 
                         N_batch = batch_LR.shape[0]
 
                         feed_dict = {x_HR:batch_HR, x_LR:batch_LR}
-
-                        if hasSurfRoughness is True:
-                            feed_dict = {x_HR:batch_HR, x_LR:batch_LR, x_rough:batch_rough}
 
                         batch_SR = sess.run(model.x_SR, feed_dict=feed_dict)
 
@@ -254,21 +204,10 @@ class PhIREGANs:
                     test_out = None
                     epoch_g_loss, N_test = 0, 0
                     while True:
-                        batch_idx, batch_LR, batch_HR, batch_lat, batch_lon = None, None, None, None, None
-                        batch_rough = None
-
-                        if hasSurfRoughness is True:
-                            batch_idx, batch_LR, batch_HR, batch_lat, batch_lon = sess.run([idx, LR_out, HR_out, lat, lon])
-                            print(batch_HR.shape)
-                            batch_rough = self.roughnessGrabber(batch_lat, batch_lon, batch_HR.shape, surfRough_path)
-                        else:
-                            batch_idx, batch_LR, batch_HR = sess.run([idx, LR_out, HR_out])
+                        batch_idx, batch_LR, batch_HR = sess.run([idx, LR_out, HR_out])
                         N_batch = batch_LR.shape[0]
 
                         feed_dict = {x_HR:batch_HR, x_LR:batch_LR}
-
-                        if hasSurfRoughness is True:
-                            feed_dict = {x_HR:batch_HR, x_LR:batch_LR, x_rough:batch_rough}
 
                         batch_SR, gl = sess.run([model.x_SR, model.g_loss], feed_dict=feed_dict)
 
@@ -291,8 +230,6 @@ class PhIREGANs:
 
                     test_out_path = self.test_data_path
 
-                    if hasSurfRoughness is True:
-                        test_out_path = self.test_data_path + 'surfaceRoughness/'
                     test_save_path = test_out_path + 'test_SR_epoch{0:05d}'.format(epoch) + '.npy'
 
                     if not os.path.exists(test_out_path):
@@ -318,13 +255,9 @@ class PhIREGANs:
         print('Done.')
         return model_dr
 
-    def train(self, r, train_path, test_path, model_path, surfRough_path = None, batch_size=100):
+    def train(self, r, train_path, test_path, model_path, batch_size=100):
 
         """Train network using GANs. Only run this after model has been sufficiently pre-trained."""
-
-        hasSurfRoughness = False
-        if surfRough_path is not None:
-            hasSurfRoughness = True
 
         self.set_mu_sig(train_path, batch_size)
         print(self.loss_type, self.mu_sig, self.LR_data_shape)
@@ -336,18 +269,9 @@ class PhIREGANs:
         # Set high- and low-res data place holders. Make sure the sizes match the data
         x_LR = tf.placeholder(tf.float32, [None,  self.LR_data_shape[1],  self.LR_data_shape[2], self.LR_data_shape[3]])
         x_HR = tf.placeholder(tf.float32, [None, self.LR_data_shape[1]*scale,  self.LR_data_shape[2]*scale, self.LR_data_shape[3]])
-        x_rough = None
-        model = None
-        idx, LR_out, HR_out, lat, lon = None, None, None, None, None
 
-        # if hasSurfRoughness is true then do the stuff for setting up everything w/ surface roughness
-        if hasSurfRoughness is True:
-            x_rough = tf.placeholder(tf.float32, [None, self.LR_data_shape[1]*scale,  self.LR_data_shape[2]*scale,1])
-            # Initialize network and set optimizer
-            model = SRGAN_surfRough(x_LR, x_HR, x_rough, r=r, status='training', loss_type=self.loss_type)
-        else:
-            # Initialize network and set optimizer
-            model = SRGAN(x_LR, x_HR, r=r, status='training', loss_type=self.loss_type)
+        # Initialize network and set optimizer
+        model = SRGAN(x_LR, x_HR, r=r, status='training', loss_type=self.loss_type)
 
         optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
         g_train_op = optimizer.minimize(model.g_loss, var_list=model.g_variables)
@@ -364,22 +288,13 @@ class PhIREGANs:
         print('Building data pipeline ...', end=' ')
         ds_train = tf.data.TFRecordDataset(train_path)
         ds_test = tf.data.TFRecordDataset(test_path)
-        iterator = None
 
-        if hasSurfRoughness is True:
-            ds_train = ds_train.map(lambda xx: self._parse_train_SurfRough_(xx, self.mu_sig)).shuffle(1000).batch(batch_size)
-            ds_test = ds_test.map(lambda xx: self._parse_train_SurfRough_(xx, self.mu_sig)).batch(batch_size)
+        ds_train = ds_train.map(lambda xx: self._parse_train_(xx, self.mu_sig)).shuffle(1000).batch(batch_size)
+        ds_test = ds_test.map(lambda xx: self._parse_train_(xx, self.mu_sig)).batch(batch_size)
 
-            iterator = tf.data.Iterator.from_structure(ds_train.output_types,
-                                                       ds_train.output_shapes)
-            idx, LR_out, HR_out, lat, lon = iterator.get_next()
-        else:
-            ds_train = ds_train.map(lambda xx: self._parse_train_(xx, self.mu_sig)).shuffle(1000).batch(batch_size)
-            ds_test = ds_test.map(lambda xx: self._parse_train_(xx, self.mu_sig)).batch(batch_size)
-
-            iterator = tf.data.Iterator.from_structure(ds_train.output_types,
+        iterator = tf.data.Iterator.from_structure(ds_train.output_types,
                                                    ds_train.output_shapes)
-            idx, LR_out, HR_out = iterator.get_next()
+        idx, LR_out, HR_out = iterator.get_next()
 
 
         init_iter_train = iterator.make_initializer(ds_train)
@@ -441,22 +356,11 @@ class PhIREGANs:
                     while True:
                         iters += 1
 
-                        batch_idx, batch_LR, batch_HR, batch_lat, batch_lon = None, None, None, None, None
-                        batch_rough = None
-
-                        if hasSurfRoughness is True:
-                            batch_idx, batch_LR, batch_HR, batch_lat, batch_lon = sess.run([idx, LR_out, HR_out, lat, lon])
-                            #print(tch_idx, batch_LR, batch_HR, batch_lat, batch_lon.shape, batch_HR.shape)
-                            batch_rough = self.roughnessGrabber(batch_lat, batch_lon, batch_HR.shape, surfRough_path)
-                        else:
-                            batch_idx, batch_LR, batch_HR = sess.run([idx, LR_out, HR_out])
+                        batch_idx, batch_LR, batch_HR = sess.run([idx, LR_out, HR_out])
 
                         N_batch = batch_LR.shape[0]
 
                         feed_dict = {x_HR:batch_HR, x_LR:batch_LR}
-
-                        if hasSurfRoughness is True:
-                            feed_dict = {x_HR:batch_HR, x_LR:batch_LR, x_rough:batch_rough}
 
                         batch_SR = sess.run(model.x_SR, feed_dict=feed_dict)
 
@@ -514,19 +418,10 @@ class PhIREGANs:
                     epoch_g_loss, epoch_d_loss, N_test = 0, 0, 0
                     while True:
                         batch_idx, batch_LR, batch_HR, batch_lat, batch_lon = None, None, None, None, None
-                        batch_rough = None
-
-                        if hasSurfRoughness is True:
-                            batch_idx, batch_LR, batch_HR, batch_lat, batch_lon = sess.run([idx, LR_out, HR_out, lat, lon])
-                            batch_rough = self.roughnessGrabber(batch_lat, batch_lon, batch_HR.shape, surfRough_path)
-                        else:
-                            batch_idx, batch_LR, batch_HR = sess.run([idx, LR_out, HR_out])
+                        batch_idx, batch_LR, batch_HR = sess.run([idx, LR_out, HR_out])
                         N_batch = batch_LR.shape[0]
 
                         feed_dict = {x_HR:batch_HR, x_LR:batch_LR}
-
-                        if hasSurfRoughness is True:
-                            feed_dict = {x_HR:batch_HR, x_LR:batch_LR, x_rough:batch_rough}
 
                         batch_SR = sess.run(model.x_SR, feed_dict=feed_dict)
 
@@ -551,9 +446,6 @@ class PhIREGANs:
                     g_loss_test = epoch_g_loss/N_test
                     d_loss_test = epoch_d_loss/N_test
 
-                    if hasSurfRoughness is True:
-                        test_out_path = self.test_data_path + 'surfaceRoughness/'
-
                     if not os.path.exists(test_out_path):
                         os.makedirs(test_out_path)
                     if (epoch % self.save_every) == 0:
@@ -576,13 +468,9 @@ class PhIREGANs:
         print('Done.')
         return [g_model_dr, gd_model_dr]
 
-    def test(self, r, train_path, val_path, model_path, surfRough_path = None, batch_size = 100):
+    def test(self, r, train_path, val_path, model_path, batch_size = 100):
 
         """Run test data through generator and save output."""
-        hasSurfRoughness = False
-        if surfRough_path is not None:
-            hasSurfRoughness = True
-
         self.set_mu_sig(train_path, batch_size)
         scale = np.prod(r)
 
@@ -592,19 +480,12 @@ class PhIREGANs:
         tf.reset_default_graph()
         # Set low-res data place holders
         x_LR = tf.placeholder(tf.float32, [None, None, None, 2])
-        x_rough = None
 
         model = None
         idx, LR_out, HR_out, lat, lon = None, None, None, None, None
 
-        # if hasSurfRoughness is true then do the stuff for setting up everything w/ surface roughness
-        if hasSurfRoughness is True:
-            x_rough = tf.placeholder(tf.float32, [None, shape[1]*scale,  shape[2]*scale, 1])
-            # Initialize network
-            model = SRGAN_surfRough(x_LR, x_rough, r=r, status='testing', loss_type=self.loss_type)
-        else:
-            # Initialize network
-            model = SRGAN(x_LR, r=r, status='testing', loss_type=self.loss_type)
+        # Initialize network
+        model = SRGAN(x_LR, r=r, status='testing', loss_type=self.loss_type)
 
         # Initialize network and set optimizer
         init = tf.global_variables_initializer()
@@ -616,18 +497,11 @@ class PhIREGANs:
         ds_test = tf.data.TFRecordDataset(val_path)
         iterator = None
 
-        if hasSurfRoughness is True:
-            ds_test = ds_test.map(lambda xx: self._parse_val_SurfRough_(xx, self.mu_sig)).batch(batch_size)
+        ds_test = ds_test.map(lambda xx: self._parse_val_(xx, self.mu_sig)).batch(batch_size)
 
-            iterator = tf.data.Iterator.from_structure(ds_test.output_types,
+        iterator = tf.data.Iterator.from_structure(ds_test.output_types,
                                                    ds_test.output_shapes)
-            idx, LR_out, lat, lon = iterator.get_next()
-        else:
-            ds_test = ds_test.map(lambda xx: self._parse_val_(xx, self.mu_sig)).batch(batch_size)
-
-            iterator = tf.data.Iterator.from_structure(ds_test.output_types,
-                                                   ds_test.output_shapes)
-            idx, LR_out = iterator.get_next()
+        idx, LR_out = iterator.get_next()
 
         print(idx)
         init_iter_test  = iterator.make_initializer(ds_test)
@@ -650,19 +524,10 @@ class PhIREGANs:
                 while True:
 
                     batch_idx, batch_LR,batch_lat, batch_lon = None, None, None, None, None, None
-                    batch_rough = None
-
-                    if hasSurfRoughness is True:
-                        batch_idx, batch_LR, batch_lat, batch_lon = sess.run([idx, LR_out, HR_out, lat, lon])
-                        batch_rough = self.roughnessGrabber(batch_lat, batch_lon, (batch_LR.shape[0], batch_LR.shape[1]*scale,batch_LR.shape[2]*scale, batch_LR.shape[3]), surfRough_path)
-                    else:
-                        batch_idx, batch_LR, batch_HR = sess.run([idx, LR_out, HR_out])
+                    batch_idx, batch_LR, batch_HR = sess.run([idx, LR_out, HR_out])
                     N_batch = batch_LR.shape[0]
 
                     feed_dict = {x_LR:batch_LR}
-
-                    if hasSurfRoughness is True:
-                        feed_dict = {x_LR:batch_LR, x_rough:batch_rough}
 
                     batch_SR = sess.run(model.x_SR, feed_dict=feed_dict)
 
@@ -676,9 +541,6 @@ class PhIREGANs:
                 pass
 
             test_out_path = self.test_data_path
-
-            if hasSurfRoughness is True:
-                test_out_path = self.test_data_path + 'surfaceRoughness/'
 
             if not os.path.exists(test_out_path):
                 os.makedirs(test_out_path)
@@ -740,65 +602,6 @@ class PhIREGANs:
         if mu_sig is not None:
             data_LR = (data_LR - mu_sig[0])/mu_sig[1]
         return idx, data_LR
-
-    def _parse_train_SurfRough_(self, serialized_example, mu_sig=None):
-        feature = {'index': tf.FixedLenFeature([], tf.int64),
-                 'data_LR': tf.FixedLenFeature([], tf.string),
-                    'h_LR': tf.FixedLenFeature([], tf.int64),
-                    'w_LR': tf.FixedLenFeature([], tf.int64),
-                 'data_HR': tf.FixedLenFeature([], tf.string),
-                    'h_HR': tf.FixedLenFeature([], tf.int64),
-                    'w_HR': tf.FixedLenFeature([], tf.int64),
-                       'c': tf.FixedLenFeature([], tf.int64),
-                     'lat': tf.FixedLenFeature([], tf.string),
-                     'lon': tf.FixedLenFeature([], tf.string)}
-        example = tf.parse_single_example(serialized_example, feature)
-
-        idx = example['index']
-
-        h_LR, w_LR = example['h_LR'], example['w_LR']
-        h_HR, w_HR = example['h_HR'], example['w_HR']
-
-        c = example['c']
-
-        lat, lon = tf.decode_raw(example['lat'], tf.float64), tf.decode_raw(example['lon'], tf.float64)
-
-        data_LR = tf.decode_raw(example['data_LR'], tf.float64)
-        data_HR = tf.decode_raw(example['data_HR'], tf.float64)
-
-        data_LR = tf.reshape(data_LR, (h_LR, w_LR, c))
-        data_HR = tf.reshape(data_HR, (h_HR, w_HR, c))
-
-        if mu_sig is not None:
-            data_LR = (data_LR - mu_sig[0])/mu_sig[1]
-            data_HR = (data_HR - mu_sig[0])/mu_sig[1]
-
-        return idx, data_LR, data_HR, lat, lon
-
-    def _parse_val_SurfRough_(self, serialized_example, mu_sig=None):
-        feature = {'index': tf.FixedLenFeature([], tf.int64),
-                 'data_LR': tf.FixedLenFeature([], tf.string),
-                    'h_LR': tf.FixedLenFeature([], tf.int64),
-                    'w_LR': tf.FixedLenFeature([], tf.int64),
-                       'c': tf.FixedLenFeature([], tf.int64),
-                     'lat': tf.FixedLenFeature([], tf.string),
-                     'lon': tf.FixedLenFeature([], tf.string)}
-        example = tf.parse_single_example(serialized_example, feature)
-
-        idx = example['index']
-
-        h_LR, w_LR = example['h_LR'], example['w_LR']
-
-        c = example['c']
-
-        lat, lon = tf.decode_raw(example['lat'], tf.float32), tf.decode_raw(example['lon'], tf.float32)
-
-        data_LR = tf.decode_raw(example['data_LR'], tf.float32)
-        data_LR = tf.reshape(data_LR, (h_LR, w_LR, c))
-
-        if mu_sig is not None:
-            data_LR = (data_LR - mu_sig[0])/mu_sig[1]
-        return idx, data_LR, lat, lon
 
     def set_mu_sig(self, data_path, batch_size):
         # Compute mu, sigma for all channels of data
