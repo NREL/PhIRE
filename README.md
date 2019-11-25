@@ -1,5 +1,4 @@
 ## Physics-Informed Resolution-Enhancing GANs (PhIRE GANs)
-**Inlcuding solar for now because it is easier to clean everything here. Will remove before PhIREGANs goes public.**   
 ___
 ### Requirements
 - Python v3.7
@@ -9,12 +8,12 @@ ___
     - matplotlib v3.0.3
 - for data processing:
     - netCDF4
-    - pvlib
+    - pvlib (for GHI decomposition)
 
 ### Data
 
 ##### WIND Toolkit & NSRDB
-LR, MR, and HR wind example data can be found in `example_data/`. These datasets are from NREL's WIND Toolkit. The LR and MR data are to be used with the MR and HR models respectively. If you would like to use your own data for the super-resolution it must have the shape: (None, None, None, [ua, va]). Example NSRDB data can also be found in `example_data/` and can be treated in the same manner as the WIND Toolkit is treated. If you choose to use your own solar data it should have the shape: (None, None, None, [DNI, DHI]).
+LR, MR, and HR wind example data (from WIND Toolkit) can be found in `example_data/`. These datasets are from NREL's WIND Toolkit. The LR and MR data are to be used with the MR and HR models respectively. If you would like to use your own data for the super-resolution it must have the shape: (None, None, None, [ua, va]). Example solar data (from NSRDB) can also be found in `example_data/` and can be treated in the same manner as the WIND Toolkit is treated. If you choose to use your own solar data it should have the shape: (None, None, None, [DNI, DHI]).
 The scripts are designed to take in TFRecords. An example of how to convert numpy arrays to compatible TFRecords can be found in `data_processing/TFRecords_gen.py`.
 
 ##### CCSM
@@ -34,10 +33,10 @@ When super-resolving the ua and va the CCSM data should be formatted the same wa
 Model weights can be found in `models/`. The wind MR and HR models perform a 10x and 5x super-resolution respectively while both solar models perform a 5x super-resolution. Each model is designed to work on the distance scales they were trained on (100 to 10km or 10km to 2km/4km). If you wish to have a different amount of super-resolution you must train the models accordingly.
 
 ### Running the Models
-An example of how to use the PhIRE GANs model can be found in `example.py`.
+An example of how to use the PhIRE GANs model can be found in `main.py`.
 It is recommended that data is loaded in as a TFRecord (see Data).
 Give more of a description here - load in data, run test.
-Outlines of both the pretraining (no adversarial component) and training (with adversarial component) are included in the `PhIREGANs.py` script but their use is not demonstrated in `example.py`.
+Outlines of both the pretraining (no adversarial component) and training (with adversarial component) are included in the `PhIREGANs.py` script but their use is not demonstrated in `main.py`.
 
 #### References
 [1] Stengel K., Glaws A., Hettinger D., King R. "Physics-informed super-resolution of climatological wind and solar data". 2019

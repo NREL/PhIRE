@@ -81,6 +81,19 @@ class PhIREGANs:
         self.test_data_path = in_data_path
 
     def pre_train(self, r, train_path, test_path, model_path, batch_size = 100):
+        '''
+            This method trains the generator without using a disctiminator/adversarial training and using MSE. This method should be called to sufficiently train the generator to produce decent images before moving on to adversarial training with the train() method.
+
+            inputs:
+                r - (int array) should be array of prime factorization of amount of super-resolution to perform
+                train_path - (string) path of training data file to load in
+                test_path - (string) path of testing data file to load in
+                model_path - (string) path of model to load in
+                batch_size - (int) number of images to grab per batch. decrase if running out of memory
+
+            output:
+            model_dr - (string) path to the trained model
+        '''
 
         """Pretrain network (i.e., no adversarial component)."""
         print("model name: ", self.model_name)
@@ -91,7 +104,7 @@ class PhIREGANs:
         # Set high- and low-res data place holders. Make sure the sizes match the data
         x_LR = tf.placeholder(tf.float32, [None,  self.LR_data_shape[1],  self.LR_data_shape[2], self.LR_data_shape[3]])
         x_HR = tf.placeholder(tf.float32, [None, self.LR_data_shape[1]*scale,  self.LR_data_shape[2]*scale, self.LR_data_shape[3]])
-        
+
         # Initialize network and set optimizer
         model = SRGAN(x_LR, x_HR, r=r, status='pre-training', loss_type= self.loss_type)
 
@@ -256,6 +269,21 @@ class PhIREGANs:
         return model_dr
 
     def train(self, r, train_path, test_path, model_path, batch_size=100):
+        '''
+            This method trains the generator using a disctiminator/adversarial training and MSE. This method should be called to sufficiently train the generator to produce decent images before moving on to adversarial training with the train() method.
+
+            inputs:
+                r           -   (int array) should be array of prime factorization of amount of super-resolution to perform
+                train_path  -   (string) path of training data file to load in
+                test_path   -   (string) path of testing data file to load in
+                model_path  -   (string) path of model to load in
+                batch_size  -   (int) number of images to grab per batch. decrase if running out of
+                                memory
+
+            output:
+            [g_model_dr, gd_model_dr] - ([string, string]) paths to the trained generator model
+                                        (g_model_dr) and the trained generator with the trained descriminator (gd_model_dr)
+        '''
 
         """Train network using GANs. Only run this after model has been sufficiently pre-trained."""
 
@@ -469,6 +497,22 @@ class PhIREGANs:
         return [g_model_dr, gd_model_dr]
 
     def test(self, r, train_path, val_path, model_path, batch_size = 100):
+        '''
+            This method trains the generator using a disctiminator/adversarial training and MSE. This method should be called to sufficiently train the generator to produce decent images before moving on to adversarial training with the train() method.
+
+            inputs:
+                r           -   (int array) should be array of prime factorization of amount of
+                                super-resolution to perform
+                train_path  -   (string) path of training data file to load in
+                val_path    -   (string) path of validation data file to load in. should not have an
+                                'HR' ground truth
+                model_path  -   (string) path of model to load in
+                batch_size  -   (int) number of images to grab per batch. decrase if running out of
+                                memory
+            output:
+            LR_out, data_out  - (numpy array, numpy array) arrays of the LR input and corresponding
+                                SR output
+        '''
 
         """Run test data through generator and save output."""
         self.set_mu_sig(train_path, batch_size)
@@ -552,6 +596,17 @@ class PhIREGANs:
 
     # Parser function for data pipeline. May need alternative parser for tfrecords without high-res counterpart
     def _parse_train_(self, serialized_example, mu_sig=None):
+        '''
+            this method parses TFRecords for the models to read in for training or pretraining.
+
+            inputs:
+                serialized_example  - should only contain LR images (no HR ground truth images)
+                mu_sig              - mean, sigma if known
+            outputs:
+                idx     -   an array of indicies for each sample
+                data_LR -   array of LR images in the batch
+                data_HR -   array of HR (corresponding ground truth HR version of data_LR)
+        '''
         feature = {'index': tf.FixedLenFeature([], tf.int64),
                  'data_LR': tf.FixedLenFeature([], tf.string),
                     'h_LR': tf.FixedLenFeature([], tf.int64),
@@ -582,6 +637,17 @@ class PhIREGANs:
         return idx, data_LR, data_HR
 
     def _parse_val_(self, serialized_example, mu_sig=None):
+        '''
+            this method parses TFRecords for the models to read in for testing/validation.
+
+            inputs:
+                serialized_example  - should only contain LR images (no HR ground truth images)
+                mu_sig              - mean, sigma if known
+            outputs:
+                idx     -   an array of indicies for each sample
+                data_LR -   array of LR images in the batch
+        '''
+
         feature = {'index': tf.FixedLenFeature([], tf.int64),
                  'data_LR': tf.FixedLenFeature([], tf.string),
                     'h_LR': tf.FixedLenFeature([], tf.int64),
@@ -604,9 +670,21 @@ class PhIREGANs:
         return idx, data_LR
 
     def set_mu_sig(self, data_path, batch_size):
-        # Compute mu, sigma for all channels of data
-        # NOTE: This includes building a temporary data pipeline and looping through everything.
-        #       There's probably a smarter way to do this...
+
+        '''
+            Compute mu, sigma for all channels of data
+            NOTE:   This includes building a temporary data pipeline and looping through everything.
+                    There's probably a smarter way to do this...
+            inputs:
+                data_path - (string) should be the path to the TRAINING DATA since mu and sig are
+                            calculated based on the trainind data regardless of if pre-training,
+                            training, or testing/validating
+                batch_size - number of samples to grab each interation. will be passed in directly
+                             from pre-train, train, or test method by default.
+            outputs:
+                sets self.mu_sig instance as well as the LR training shape to be used for the
+                    current method (pre-train, train, or test) and the LR resolution passed into it
+        '''
         print('Loading data ...', end=' ')
         dataset = tf.data.TFRecordDataset(data_path)
         dataset = dataset.map(self._parse_train_).batch(batch_size)

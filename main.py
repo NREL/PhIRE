@@ -11,8 +11,8 @@ status_options = ['training'] # or 'pre-training' or 'testing'
 #-------------------------------------------------------------
 epoch_shift = 0
 num_epochs = 1
-r = [2,5] #[5] FOR MR TO HR, or for solar
-batch_size = 100
+r = [[2,5], [5]] #[5] FOR MR TO HR, or for solar
+batch_size = 10
 
 #WIND
 #-------------------------------------------------------------
@@ -24,7 +24,8 @@ test_path = path_prefix + 'test_data/' + variable_to_SR + '_example_LR_validatio
 
 val_path = "" #CCSM or 1d training set data.
 
-model_path = 'models/lr-mr_5x_' + variable_to_SR + '_model/SRGAN'
+model_path_lr = 'models/lr-mr_5x_' + variable_to_SR + '_model/SRGAN'
+model_path_hr = 'models/mr-hr_10x_' + variable_to_SR + '_model/SRGAN'
 
 
 #SOLAR
@@ -45,23 +46,6 @@ if __name__ == '__main__':
 
     phiregans = PhIREGANs(1, 1e-4, epoch_shift, d_type = variable_to_SR)
 
-    for status in status_options:
-        if status == 'pre-training':
+    sr_val = phiregans.test(r[0], train_path, val_path, model_path_lr)
 
-            model_saved = phiregans.pretrain(r, train_path, test_path, model_path, batch_size = 100)
-
-            print("The model is saved as: ", model_saved)
-
-        elif status == 'training':
-
-            model_saved = phiregans.train(r, train_path, test_path, model_path, batch_size = batch_size)
-
-            print("The model is saved as: ", model_saved)
-
-        elif status == 'testing':
-            #self, r, train_path, val_path, model_path, surfRough_path = None, batch_size = 100
-
-            sr_val = phiregans.test(r, train_path, val_path, model_path, batch_size = batch_size)
-
-        else:
-            print('Please enter a valid status. Status can be pretraining, training, or testing.')
+    sr_val_hr = phiregans.test(r[0], train_path, sr_val, model_path_hr, batch_size = batch_size)
