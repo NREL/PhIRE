@@ -20,7 +20,7 @@ variable_to_SR = 'wind' #or 'solar'
 
 train_path = path_prefix +  '' #insert appropriate file here
 
-test_path = path_prefix + 'test_data/' + variable_to_SR + '_example_LR_validation.tfrecord'
+test_path = path_prefix + 'example_data/' + variable_to_SR + '_example_LR_validation.tfrecord'
 
 val_path = "" #CCSM or 1d training set data.
 
@@ -35,7 +35,7 @@ variable_to_SR = 'solar' #or 'wind'
 
 train_path = path_prefix +  '' #insert appropriate file here
 
-test_path = path_prefix + 'test_data/' + variable_to_SR + '_example_LR_validation.tfrecord'
+test_path = path_prefix + 'example_data/' + variable_to_SR + '_example_LR_validation.tfrecord'
 
 val_path = "" #CCSM or 1d training set data.
 
