@@ -1,3 +1,5 @@
+''' @author: Andrew Glaws, Karen Stengel, Ryan King
+'''
 import os
 import numpy as np
 import tensorflow as tf

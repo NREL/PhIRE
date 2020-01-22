@@ -1,5 +1,6 @@
+''' @author: Karen Stengel, Andrew Glaws
+'''
 #options for 2d and 1d
-#options for surface roughness
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt

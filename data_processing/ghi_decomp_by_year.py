@@ -1,3 +1,5 @@
+''' @author: Dylan Hettinger, Andrew Glaws, Karen Stengel
+'''
 import math
 import calendar
 import pvlib

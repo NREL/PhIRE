@@ -1,3 +1,5 @@
+''' @author: Andrew Glaws, Karen Stengel, Dylan Hettinger
+'''
 import numpy as np
 import matplotlib.pyplot as plt
 

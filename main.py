@@ -1,3 +1,5 @@
+''' @author: Karen Stengel
+'''
 import numpy as np
 import matplotlib.pyplot as plt
 import sys
@@ -45,7 +47,7 @@ model_path = 'model/models/lr-mr_10x_' + variable_to_SR + '_model/SRGAN'
 
 if __name__ == '__main__':
 
-    phiregans = PhIREGANs(1, 1e-4, epoch_shift, d_type = variable_to_SR, mu_sig = [0,0.0])
+    phiregans = PhIREGANs(1, 1e-4, epoch_shift, d_type = variable_to_SR, mu_sig = [0,0.0]) #TODO: GET CORRECT MU_SIG FOR WIND AND SOLAR.
 
     sr_val = phiregans.test(r[0], train_path, val_path, model_path_lr)
 

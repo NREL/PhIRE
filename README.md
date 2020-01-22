@@ -8,8 +8,8 @@ ___
     - matplotlib v3.0.3
 - for data processing:
     - netCDF4
-    - pvlib (for GHI decomposition)
-
+    - pvlib (for GHI decomposition only)
+###### TO DO: CREATE A .YML FILE FOR THE CORRECT ENVIRONMENT
 ### Data
 
 ##### WIND Toolkit & NSRDB
@@ -25,7 +25,7 @@ If you would like to run the CCSM wind data through the pretrained PhIREGANs mod
 - realm : atmos
 - ensemble : r2i1p1
 - version : 20130218
-- variables: ua, va (for wind), and rsds (for solar)
+- variables : ua, va (for wind), and rsds (for solar)
 
 When super-resolving the ua and va the CCSM data should be formatted the same way as the WIND Toolkit: (None, None, None, [ua, va]). The CCSM rsds is the model's value for GHI and will need to be decomposed into DNI and DHI and shaped as: (None, None, None, [DNI, DHI]). The script (implementation of of TAG and DISC models) to do this can be found in `data_processing/CCSM_GHI_processing.py`.
 
@@ -36,7 +36,7 @@ Model weights can be found in `models/`. The wind MR and HR models perform a 10x
 An example of how to use the PhIRE GANs model can be found in `main.py`.
 It is recommended that data is loaded in as a TFRecord (see Data).
 Give more of a description here - load in data, run test.
-Outlines of both the pretraining (no adversarial component) and training (with adversarial component) are included in the `PhIREGANs.py` script but their use is not demonstrated in `main.py`.
+Outlines of both the pretraining (without adversarial component) and training (with adversarial component) are included in the `PhIREGANs.py` script but their use is not demonstrated in `main.py`.
 
 #### References
 [1] Stengel K., Glaws A., Hettinger D., King R. "Physics-informed super-resolution of climatological wind and solar data". 2019  

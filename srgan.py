@@ -1,3 +1,6 @@
+''' @author: Andrew Glaws, Karen Stengel, Ryan King
+    based on architecture from : Ledig, Christian, et al. "Photo-realistic single image super-resolution using a generative adversarial network." Proceedings of the IEEE conference on computer vision and pattern recognition. 2017.
+'''
 import tensorflow as tf
 import numpy as np
 import sys
