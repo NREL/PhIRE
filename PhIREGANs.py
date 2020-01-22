@@ -4,7 +4,8 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 from time import strftime, time
 import sys
-sys.path.append('../utils')
+sys.path.append('utils/')
+print(sys.path)
 from utils import *
 from srgan import SRGAN
 
@@ -29,14 +30,14 @@ class PhIREGANs:
 
     def __init__(self, num_epochs = None, learn_rate = None, e_shift = None, save = None, print = None, mu_sig = None, loss_t = None, d_type = None):
 
-        self.N_epochs = num_epochs if num_epochs is not None else 1000
-        self.learning_rate = learn_rate if learn_rate is not None else 1e-5
-        self.epoch_shift = e_shift if e_shift is not None else 0
-        self.save_every = save if save is not None else 1
-        self.print_every = print if print is not None else 1000
-        self.mu_sig = mu_sig if mu_sig is not None else [0, 0.0]
-        self.loss_type = loss_t if loss_t is not None else 'MSE'
-        self.data_type = d_type if d_type is not None else 'wind'
+        self.N_epochs = num_epochs if num_epochs is not None else self.DEFAULT_N_EPOCHS
+        self.learning_rate = learn_rate if learn_rate is not None else self.DEFAULT_LEARNING_RATE
+        self.epoch_shift = e_shift if e_shift is not None else self.DEFAULT_EPOCH_SHIFT
+        self.save_every = save if save is not None else self.DEFAULT_SAVE_EVERY
+        self.print_every = print if print is not None else self.DEFAULT_PRINT_EVERY
+        self.mu_sig = mu_sig if mu_sig is not None else self.DEFAULT_MU_SIG
+        self.loss_type = loss_t if loss_t is not None else self.DEFAULT_LOSS_TYPE
+        self.data_type = d_type if d_type is not None else self.DEFAULT_DATA_TYPE
         self.LR_data_shape = None
 
         if self.loss_type in ['AE', 'MSEandAE']:
@@ -71,7 +72,7 @@ class PhIREGANs:
     def setNum_epochs(self, in_epochs):
         self.N_epochs = in_epochs
 
-     def setLearnRate(self, learn_rate):
+    def setLearnRate(self, learn_rate):
         self.learning_rate = learn_rate
 
     def setModel_name(self, in_model_name):
@@ -268,17 +269,18 @@ class PhIREGANs:
         print('Done.')
         return model_dr
 
-    def train(self, r, train_path, test_path, model_path, batch_size=100):
+    def train(self, r, train_path, test_path, model_path, batch_size=100, alpha_adverse = 0.001):
         '''
             This method trains the generator using a disctiminator/adversarial training and MSE. This method should be called to sufficiently train the generator to produce decent images before moving on to adversarial training with the train() method.
 
             inputs:
-                r           -   (int array) should be array of prime factorization of amount of super-resolution to perform
-                train_path  -   (string) path of training data file to load in
-                test_path   -   (string) path of testing data file to load in
-                model_path  -   (string) path of model to load in
-                batch_size  -   (int) number of images to grab per batch. decrase if running out of
+                r               -   (int array) should be array of prime factorization of amount of super-resolution to perform
+                train_path      -   (string) path of training data file to load in
+                test_path       -   (string) path of testing data file to load in
+                model_path      -   (string) path of model to load in
+                batch_size      -   (int) number of images to grab per batch. decrase if running out of
                                 memory
+                alpha_adverse   - scaling value for the effect of the discriminator
 
             output:
             [g_model_dr, gd_model_dr] - ([string, string]) paths to the trained generator model
@@ -299,7 +301,7 @@ class PhIREGANs:
         x_HR = tf.placeholder(tf.float32, [None, self.LR_data_shape[1]*scale,  self.LR_data_shape[2]*scale, self.LR_data_shape[3]])
 
         # Initialize network and set optimizer
-        model = SRGAN(x_LR, x_HR, r=r, status='training', loss_type=self.loss_type)
+        model = SRGAN(x_LR, x_HR, r=r, status='training', loss_type=self.loss_type, alpha_adverse = alpha_adverse)
 
         optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
         g_train_op = optimizer.minimize(model.g_loss, var_list=model.g_variables)
@@ -515,18 +517,17 @@ class PhIREGANs:
         '''
 
         """Run test data through generator and save output."""
-        self.set_mu_sig(train_path, batch_size)
+        if train_path != '':
+            self.set_mu_sig(train_path, batch_size)
         scale = np.prod(r)
 
         idx, LR_out, lat, lon = None, None, None, None
-        model = None
         print('Initializing network ...', end=' ')
         tf.reset_default_graph()
         # Set low-res data place holders
         x_LR = tf.placeholder(tf.float32, [None, None, None, 2])
 
-        model = None
-        idx, LR_out, HR_out, lat, lon = None, None, None, None, None
+        idx, LR_out, HR_out= None, None, None
 
         # Initialize network
         model = SRGAN(x_LR, r=r, status='testing', loss_type=self.loss_type)
@@ -693,12 +694,15 @@ class PhIREGANs:
         _, LR_out, HR_out = iterator.get_next()
         #iter_out = iterator.get_next()
         #print(iter_out)
+        data_LR = None
         with tf.Session() as sess:
             N, mu, sigma = 0, 0, 0
             try:
                 while True:
+
                     data_HR = sess.run(HR_out)
                     data_LR = sess.run(LR_out)
+                    #print("HI,", data_LR.shape)
                     #print(data_HR.shape, np.min(data_HR),np.mean(data_HR),np.max(data_HR))
                     N_batch, h, w, c = data_HR.shape
                     N_new = N + N_batch

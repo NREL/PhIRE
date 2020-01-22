@@ -1,7 +1,7 @@
 import tensorflow as tf
 import numpy as np
 import sys
-sys.path.append('../utils')
+sys.path.append('utils')
 sys.path.append('../autoencoder')
 sys.path.append('../VGG19')
 from layer import *
@@ -9,7 +9,7 @@ from layer import *
 #from vgg19 import VGG19
 
 class SRGAN(object):
-    def __init__(self, x_LR=None, x_HR=None, r=None, status='pre-training', loss_type='MSE'):
+    def __init__(self, x_LR=None, x_HR=None, r=None, status='pre-training', loss_type='MSE', alpha_adverse = 0.001):
 
         status = status.lower()
         if status not in ['pre-training', 'training', 'testing']:
@@ -37,14 +37,14 @@ class SRGAN(object):
         self.g_variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='generator')
 
         if status == 'pre-training':
-            self.g_loss = self.compute_losses(x_HR, self.x_SR, None, None, isGAN=False, loss_type=loss_type)
+            self.g_loss = self.compute_losses(x_HR, self.x_SR, None, None, alpha_adverse, isGAN=False, loss_type=loss_type)
 
         elif status == 'training':
             self.disc_HR = self.discriminator(x_HR, reuse=False)
             self.disc_SR = self.discriminator(self.x_SR, reuse=True)
             self.d_variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='discriminator')
 
-            loss_out = self.compute_losses(x_HR, self.x_SR, self.disc_HR, self.disc_SR, isGAN=True, loss_type=loss_type)
+            loss_out = self.compute_losses(x_HR, self.x_SR, self.disc_HR, self.disc_SR, alpha_adverse, isGAN=True, loss_type=loss_type)
             self.g_loss = loss_out[0]
             self.d_loss = loss_out[1]
             self.advers_perf = loss_out[2]
@@ -165,7 +165,7 @@ class SRGAN(object):
         return downscaled
 
 
-    def compute_losses(self, x_HR, x_SR, d_HR, d_SR, isGAN=False, loss_type='MSE'):
+    def compute_losses(self, x_HR, x_SR, d_HR, d_SR, alpha_adverse = 0.001, isGAN=False, loss_type='MSE'):
         """Compute the losses for the generator and discriminator networks"""
 
         def compute_perceptual_loss(x_HR, x_SR, loss_type='MSE'):
@@ -241,9 +241,7 @@ class SRGAN(object):
             g_advers_loss, d_advers_loss = compute_adversarial_loss(d_HR, d_SR)
             advers_perf = compute_adversarial_performance(d_HR, d_SR)
 
-            # Need to tune alpha
-            alpha = 0.001
-            g_loss = tf.reduce_mean(percept_loss) + alpha*tf.reduce_mean(g_advers_loss)
+            g_loss = tf.reduce_mean(percept_loss) + alpha_adverse*tf.reduce_mean(g_advers_loss)
             d_loss = d_advers_loss
 
             return g_loss, d_loss, advers_perf, percept_loss, g_advers_loss
