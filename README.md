@@ -1,5 +1,13 @@
 ## Physics-Informed Resolution-Enhancing GANs (PhIRE GANs)
 ___
+### Table of Contents
+- [Requirements](https://github.com/NREL/PhIRE#requirements)
+- [Data](https://github.com/NREL/PhIRE#data)
+    - [WIND Toolkit & NSRDB](https://github.com/NREL/PhIRE#wind-toolkit--nsrdb)
+    - [CCSM](https://github.com/NREL/PhIRE#ccsm)
+- [Model Weights](https://github.com/NREL/PhIRE#model-weights)
+- [Running the Models](https://github.com/NREL/PhIRE#running-the-models)
+
 ### Requirements
 - Python v3.7
 - TensorFlow v1.13.1
@@ -10,6 +18,7 @@ ___
     - netCDF4
     - pvlib (for GHI decomposition only)
 ###### TO DO: CREATE A .YML FILE FOR THE CORRECT ENVIRONMENT
+
 ### Data
 
 ##### WIND Toolkit & NSRDB
