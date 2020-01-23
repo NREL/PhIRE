@@ -16,8 +16,9 @@ ___
     - matplotlib v3.0.3
 - for data processing:
     - netCDF4
-    - pvlib (for GHI decomposition only)
-###### TO DO: CREATE A .YML FILE FOR THE CORRECT ENVIRONMENT
+    - pvlib (for GHI decomposition only)  
+
+A conda environment YML file, `tf_env.yml` has been provided for your convenience. 
 
 ### Data
 
