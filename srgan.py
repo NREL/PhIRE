@@ -103,40 +103,40 @@ class SRGAN(object):
         with tf.variable_scope('discriminator', reuse=reuse):
             with tf.variable_scope('conv1'):
                 x = conv_layer_2d(x, [3, 3, C, 32], 1)
-                x = lrelu(x)
+                x = tf.nn.leaky_relu(x, alpha=0.2)
 
             with tf.variable_scope('conv2'):
                 x = conv_layer_2d(x, [3, 3, 32, 32], 2)
-                x = lrelu(x)
+                x = tf.nn.leaky_relu(x, alpha=0.2)
 
             with tf.variable_scope('conv3'):
                 x = conv_layer_2d(x, [3, 3, 32, 64], 1)
-                x = lrelu(x)
+                x = tf.nn.leaky_relu(x, alpha=0.2)
 
             with tf.variable_scope('conv4'):
                 x = conv_layer_2d(x, [3, 3, 64, 64], 2)
-                x = lrelu(x)
+                x = tf.nn.leaky_relu(x, alpha=0.2)
 
             with tf.variable_scope('conv5'):
                 x = conv_layer_2d(x, [3, 3, 64, 128], 1)
-                x = lrelu(x)
+                x = tf.nn.leaky_relu(x, alpha=0.2)
 
             with tf.variable_scope('conv6'):
                 x = conv_layer_2d(x, [3, 3, 128, 128], 2)
-                x = lrelu(x)
+                x = tf.nn.leaky_relu(x, alpha=0.2)
 
             with tf.variable_scope('conv7'):
                 x = conv_layer_2d(x, [3, 3, 128, 256], 1)
-                x = lrelu(x)
+                x = tf.nn.leaky_relu(x, alpha=0.2)
 
             with tf.variable_scope('conv8'):
                 x = conv_layer_2d(x, [3, 3, 256, 256], 2)
-                x = lrelu(x)
+                x = tf.nn.leaky_relu(x, alpha=0.2)
 
             x = flatten_layer(x)
             with tf.variable_scope('fully_connected1'):
                 x = dense_layer(x, 1024)
-                x = lrelu(x)
+                x = tf.nn.leaky_relu(x, alpha=0.2)
 
             with tf.variable_scope('fully_connected2'):
                 x = dense_layer(x, 1)
