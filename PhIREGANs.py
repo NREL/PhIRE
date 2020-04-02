@@ -14,35 +14,29 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 # Would prefer to find another workaround if possible
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
 class PhIREGANs:
-    # Class Attributes/defaults
     # Network training meta-parameters
-    DEFAULT_LEARNING_RATE = 1e-5 # Learning rate for gradient descent (may decrease to 1e-5 after initial training)
-    DEFAULT_N_EPOCHS = 1000 # Number of epochs of training
+    DEFAULT_N_EPOCHS = 10 # Number of epochs of training
+    DEFAULT_LEARNING_RATE = 1e-4 # Learning rate for gradient descent (may decrease to 1e-5 after initial training)
     DEFAULT_EPOCH_SHIFT = 0 # If reloading previously trained network, what epoch to start at
-    DEFAULT_SAVE_EVERY = 1 # How frequently (in epochs) to save model weights
-    DEFAULT_PRINT_EVERY = 1000 # How frequently (in iterations) to write out performance
-    DEFAULT_MU_SIG = [0, 0.0]
+    DEFAULT_SAVE_EVERY = 10 # How frequently (in epochs) to save model weights
+    DEFAULT_PRINT_EVERY = 100 # How frequently (in iterations) to write out performance
 
-    DEFAULT_DATA_TYPE = 'wind'
+    def __init__(self, data_type, N_epochs=None, learning_rate=None, epoch_shift=None, save_every=None, print_every=None, mu_sig=None):
 
-    def __init__(self, num_epochs=None, learn_rate=None, e_shift=None, save=None, print=None, mu_sig=None, d_type=None):
+        self.N_epochs      = N_epochs if N_epochs is not None else self.DEFAULT_N_EPOCHS
+        self.learning_rate = learning_rate if learning_rate is not None else self.DEFAULT_LEARNING_RATE
+        self.epoch_shift   = epoch_shift if epoch_shift is not None else self.DEFAULT_EPOCH_SHIFT
+        self.save_every    = save_every if save_every is not None else self.DEFAULT_SAVE_EVERY
+        self.print_every   = print_every if print_every is not None else self.DEFAULT_PRINT_EVERY
 
-        self.N_epochs = num_epochs if num_epochs is not None else self.DEFAULT_N_EPOCHS
-        self.learning_rate = learn_rate if learn_rate is not None else self.DEFAULT_LEARNING_RATE
-        self.epoch_shift = e_shift if e_shift is not None else self.DEFAULT_EPOCH_SHIFT
-        self.save_every = save if save is not None else self.DEFAULT_SAVE_EVERY
-        self.print_every = print if print is not None else self.DEFAULT_PRINT_EVERY
-        self.mu_sig = mu_sig if mu_sig is not None else self.DEFAULT_MU_SIG
-        self.data_type = d_type if d_type is not None else self.DEFAULT_DATA_TYPE
+        self.data_type = data_type
+        self.mu_sig = mu_sig
         self.LR_data_shape = None
 
         # Set various paths for where to save data
-        self.now = strftime('%Y%m%d-%H%M%S')
-        self.model_name = '/'.join(['model', self.now])
-        self.test_data_path ='data_out/' + self.data_type + '/' + self.model_name
-
-    def setDataType(self, dt):
-        self.data_type = dt
+        self.run_id        = '-'.join([self.data_type, strftime('%Y%m%d-%H%M%S')])
+        self.model_name    = '/'.join(['model', self.run_id])
+        self.data_out_path = '/'.join(['data_out', self.run_id])
 
     def setSave_every(self, in_save_every):
         self.save_every = in_save_every
@@ -62,8 +56,13 @@ class PhIREGANs:
     def setModel_name(self, in_model_name):
         self.model_name = in_model_name
 
-    def set_test_data_path(self, in_data_path):
-        self.test_data_path = in_data_path
+    def set_data_out_path(self, in_data_path):
+        self.data_out_path = in_data_path
+    
+    def reset_run_id(self):
+        self.run_id        = '-'.join([self.data_type, strftime('%Y%m%d-%H%M%S')])
+        self.model_name    = '/'.join(['model', self.run_id])
+        self.data_out_path = '/'.join(['data_out', self.run_id])
 
     def pre_train(self, r, train_path, test_path, model_path, batch_size=100):
         '''
@@ -488,9 +487,9 @@ class PhIREGANs:
             except tf.errors.OutOfRangeError:
                 pass
 
-            if not os.path.exists(self.test_data_path):
-                os.makedirs(self.test_data_path)
-            np.save(self.test_data_path+'/test_SR.npy', data_out)
+            if not os.path.exists(self.data_out_path):
+                os.makedirs(self.data_out_path)
+            np.save(self.data_out_path+'/test_SR.npy', data_out)
 
         print('Done.')
 

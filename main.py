@@ -1,50 +1,56 @@
 ''' @author: Karen Stengel
 '''
-import numpy as np
-import matplotlib.pyplot as plt
 from PhIREGANs import *
 from utils import *
 
-path_prefix = ''
-status_options = ['training'] # or 'pre-training' or 'testing'
-
-#GENERAL SETTINGS. SOME OF THESE CAN BE CHANGED USING phiregans.set{instance_val}(value) once phiregans object is initialized
-#-------------------------------------------------------------
-epoch_shift = 0
-num_epochs = 1
-r = [[2,5], [5]] #[5] FOR MR TO HR, or for solar
-batch_size = 10
-
-#WIND
-#-------------------------------------------------------------
-variable_to_SR = 'wind' #or 'solar'
-
-train_path = path_prefix +  '' #insert appropriate file here
-
-test_path = path_prefix + 'example_data/' + variable_to_SR + '_example_LR_validation.tfrecord'
-
-model_path_lr = 'models/lr-mr_10x_' + variable_to_SR + '_model/SRGAN'
-model_path_hr = 'models/mr-hr_5x_' + variable_to_SR + '_model/SRGAN'
-
-
-#SOLAR
+# WIND - LR-MR
 #-------------------------------------------------------------
 '''
-variable_to_SR = 'solar' #or 'wind'
+data_type = 'wind'
+train_path = 'example_data/wind_train_LR-MR.tfrecord'
+test_path = 'example_data/wind_test_LR.tfrecord'
+model_path = 'models/wind_lr-mr/trained_gan/gan'
+r = [2, 5]
+mu_sig=[[0.7684, -0.4575], [4.9491, 5.8441]]
+'''
 
-train_path = path_prefix +  '' #insert appropriate file here
+# WIND - MR-HR
+#-------------------------------------------------------------
+'''
+data_type = 'wind'
+train_path = 'example_data/wind_train_MR-HR.tfrecord'
+test_path = 'example_data/wind_test_MR.tfrecord'
+model_path = 'models/wind_mr-hr/trained_gan/gan'
+r = [5]
+mu_sig=[[0.7684, -0.4575], [5.02455, 5.9017]]
+'''
 
-test_path = path_prefix + 'example_data/' + variable_to_SR + '_example_LR_validation.tfrecord'
+# SOLAR - LR-MR
+#-------------------------------------------------------------
+'''
+data_type = 'solar'
+train_path = 'example_data/solar_train_LR-MR.tfrecord'
+test_path = 'example_data/solar_test_LR.tfrecord'
+model_path = 'models/solar_lr-mr/trained_gan/gan'
+r = [5]
+mu_sig=[[344.3262, 113.7444], [370.8409, 111.1224]]
+'''
 
-val_path = "" #CCSM or 1d training set data.
-
-model_path = 'model/models/lr-mr_10x_' + variable_to_SR + '_model/SRGAN'
+# SOLAR - MR-HR
+#-------------------------------------------------------------
+'''
+data_type = 'solar'
+train_path = 'example_data/solar_train_MR-HR.tfrecord'
+test_path = 'example_data/solar_test_MR.tfrecord'
+model_path = 'models/solar_mr-hr/trained_gan/gan'
+r = [5]
+mu_sig = [[344.3262, 113.7444], [386.9283, 117.9627]]
 '''
 
 if __name__ == '__main__':
 
-    phiregans = PhIREGANs(1, 1e-4, epoch_shift, d_type = variable_to_SR, mu_sig = [0,0.0]) #TODO: GET CORRECT MU_SIG FOR WIND AND SOLAR.
+    phiregans = PhIREGANs(data_type=data_type, mu_sig=mu_sig)
 
-    sr_val = phiregans.test(r[0], train_path, test_path, model_path_lr)
+    phiregans.test(r=r, train_path=train_path, test_path=test_path, model_path=model_path)
 
-    #sr_val_hr = phiregans.test(r[1], train_path, sr_val, model_path_hr, batch_size = batch_size)
+    
