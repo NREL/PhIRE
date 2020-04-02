@@ -23,8 +23,6 @@ train_path = path_prefix +  '' #insert appropriate file here
 
 test_path = path_prefix + 'example_data/' + variable_to_SR + '_example_LR_validation.tfrecord'
 
-val_path = "" #CCSM or 1d training set data.
-
 model_path_lr = 'models/lr-mr_10x_' + variable_to_SR + '_model/SRGAN'
 model_path_hr = 'models/mr-hr_5x_' + variable_to_SR + '_model/SRGAN'
 
@@ -47,6 +45,6 @@ if __name__ == '__main__':
 
     phiregans = PhIREGANs(1, 1e-4, epoch_shift, d_type = variable_to_SR, mu_sig = [0,0.0]) #TODO: GET CORRECT MU_SIG FOR WIND AND SOLAR.
 
-    sr_val = phiregans.test(r[0], train_path, val_path, model_path_lr)
+    sr_val = phiregans.test(r[0], train_path, test_path, model_path_lr)
 
-    sr_val_hr = phiregans.test(r[1], train_path, sr_val, model_path_hr, batch_size = batch_size)
+    #sr_val_hr = phiregans.test(r[1], train_path, sr_val, model_path_hr, batch_size = batch_size)

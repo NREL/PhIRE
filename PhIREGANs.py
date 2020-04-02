@@ -81,7 +81,13 @@ class PhIREGANs:
         '''
 
         """Pretrain network (i.e., no adversarial component)."""
-        self.set_mu_sig(train_path, batch_size)
+        tf.reset_default_graph()
+        
+        if self.mu_sig is None:
+            self.set_mu_sig(train_path, batch_size)
+        self.set_LR_data_shape(train_path)
+        h, w, C = self.LR_data_shape
+
         scale = np.prod(r)
 
         print('Initializing network ...', end=' ')
@@ -232,13 +238,18 @@ class PhIREGANs:
         '''
 
         """Train network using GANs. Only run this after model has been sufficiently pre-trained."""
+        tf.reset_default_graph()
 
-        self.set_mu_sig(train_path, batch_size)
+        assert model_path is not None, 'Must provide path for pretrained model'
+        
+        if self.mu_sig is None:
+            self.set_mu_sig(train_path, batch_size)
+        self.set_LR_data_shape(train_path)
+        h, w, C = self.LR_data_shape
         
         scale = np.prod(r)
 
         print('Initializing network ...', end=' ')
-        tf.reset_default_graph()
 
         # Set high- and low-res data place holders. Make sure the sizes match the data
         x_LR = tf.placeholder(tf.float32, [None,  self.LR_data_shape[1],  self.LR_data_shape[2], self.LR_data_shape[3]])
@@ -398,16 +409,15 @@ class PhIREGANs:
         print('Done.')
         return [g_model_dr, gd_model_dr]
 
-    def test(self, r, train_path, val_path, model_path, batch_size=100):
+    def test(self, r, train_path, test_path, model_path, batch_size=100):
         '''
-            This method trains the generator using a disctiminator/adversarial training. This method should be called to sufficiently train the generator to produce decent images before moving on to adversarial training with the train() method.
+            This method loads a previously trained model and runs it on test data
 
             inputs:
                 r           -   (int array) should be array of prime factorization of amount of
                                 super-resolution to perform
                 train_path  -   (string) path of training data file to load in
-                val_path    -   (string) path of validation data file to load in. should not have an
-                                'HR' ground truth
+                test_path   -   (string) path of test data file to load in
                 model_path  -   (string) path of model to load in
                 batch_size  -   (int) number of images to grab per batch. decrase if running out of
                                 memory
@@ -417,30 +427,29 @@ class PhIREGANs:
         '''
 
         """Run test data through generator and save output."""
-        if train_path != '':
-            self.set_mu_sig(train_path, batch_size)
-        scale = np.prod(r)
-
-        idx, LR_out = None, None
-        print('Initializing network ...', end=' ')
         tf.reset_default_graph()
-        # Set low-res data place holders
-        x_LR = tf.placeholder(tf.float32, [None, None, None, 2])
+        
+        if self.mu_sig is None:
+            assert train_path is not None
+            self.set_mu_sig(train_path, batch_size)
+        self.set_LR_data_shape(test_path)
+        h, w, C = self.LR_data_shape
+
+        print('Initializing network ...', end=' ')
+        
+        x_LR = tf.placeholder(tf.float32, [None, None, None, C])
 
         # Initialize network
         model = SRGAN(x_LR, r=r, status='testing')
 
-        # Initialize network and set optimizer
         init = tf.global_variables_initializer()
         g_saver = tf.train.Saver(var_list=model.g_variables, max_to_keep=10000)
         print('Done.')
 
         print('Building data pipeline ...', end=' ')
 
-        ds_test = tf.data.TFRecordDataset(val_path)
-        iterator = None
-
-        ds_test = ds_test.map(lambda xx: self._parse_val_(xx, self.mu_sig)).batch(batch_size)
+        ds_test = tf.data.TFRecordDataset(test_path)
+        ds_test = ds_test.map(lambda xx: self._parse_test_(xx, self.mu_sig)).batch(batch_size)
 
         iterator = tf.data.Iterator.from_structure(ds_test.output_types,
                                                    ds_test.output_shapes)
@@ -453,8 +462,6 @@ class PhIREGANs:
         with tf.Session() as sess:
             print('Loading saved network ...', end=' ')
             sess.run(init)
-
-            # Load trained model
             g_saver.restore(sess, model_path)
             print('Done.')
 
@@ -481,29 +488,26 @@ class PhIREGANs:
             except tf.errors.OutOfRangeError:
                 pass
 
-            test_out_path = self.test_data_path
-
-            if not os.path.exists(test_out_path):
-                os.makedirs(test_out_path)
-            if (epoch % self.save_every) == 0:
-                np.save(test_out_path +'/val_SR.npy', data_out)
+            if not os.path.exists(self.test_data_path):
+                os.makedirs(self.test_data_path)
+            np.save(self.test_data_path+'/test_SR.npy', data_out)
 
         print('Done.')
-        return LR_out, data_out
 
-    # Parser function for data pipeline. May need alternative parser for tfrecords without high-res counterpart
     def _parse_train_(self, serialized_example, mu_sig=None):
         '''
-            this method parses TFRecords for the models to read in for training or pretraining.
+            This method parses TFRecords for the models to read in for training or pretraining.
 
             inputs:
-                serialized_example  - should only contain LR images (no HR ground truth images)
-                mu_sig              - mean, sigma if known
+                serialized_example - should only contain LR images (no HR ground truth images)
+                mu_sig             - mean, sigma if known
+
             outputs:
-                idx     -   an array of indicies for each sample
-                data_LR -   array of LR images in the batch
-                data_HR -   array of HR (corresponding ground truth HR version of data_LR)
+                idx     - an array of indicies for each sample
+                data_LR - array of LR images in the batch
+                data_HR - array of HR (corresponding ground truth HR version of data_LR)
         '''
+
         feature = {'index': tf.FixedLenFeature([], tf.int64),
                  'data_LR': tf.FixedLenFeature([], tf.string),
                     'h_LR': tf.FixedLenFeature([], tf.int64),
@@ -533,16 +537,17 @@ class PhIREGANs:
 
         return idx, data_LR, data_HR
 
-    def _parse_val_(self, serialized_example, mu_sig=None):
+    def _parse_test_(self, serialized_example, mu_sig=None):
         '''
-            this method parses TFRecords for the models to read in for testing/validation.
+            this method parses TFRecords for the models to read in for testing.
 
             inputs:
-                serialized_example  - should only contain LR images (no HR ground truth images)
-                mu_sig              - mean, sigma if known
+                serialized_example - should only contain LR images (no HR ground truth images)
+                mu_sig             - mean, sigma if known
+
             outputs:
-                idx     -   an array of indicies for each sample
-                data_LR -   array of LR images in the batch
+                idx     - an array of indicies for each sample
+                data_LR - array of LR images in the batch
         '''
 
         feature = {'index': tf.FixedLenFeature([], tf.int64),
@@ -564,42 +569,37 @@ class PhIREGANs:
 
         if mu_sig is not None:
             data_LR = (data_LR - mu_sig[0])/mu_sig[1]
+
         return idx, data_LR
 
     def set_mu_sig(self, data_path, batch_size):
-
         '''
             Compute mu, sigma for all channels of data
-            NOTE:   This includes building a temporary data pipeline and looping through everything.
-                    There's probably a smarter way to do this...
             inputs:
-                data_path - (string) should be the path to the TRAINING DATA since mu and sig are
-                            calculated based on the trainind data regardless of if pre-training,
-                            training, or testing/validating
+                data_path - (string) should be the path to the TRAINING DATA since mu and sigma are
+                            calculated based on the trainind data regardless of if pretraining,
+                            training, or testing.
                 batch_size - number of samples to grab each interation. will be passed in directly
-                             from pre-train, train, or test method by default.
+                             from pretrain, train, or test method by default.
             outputs:
-                sets self.mu_sig instance as well as the LR training shape to be used for the
-                    current method (pre-train, train, or test) and the LR resolution passed into it
+                sets self.mu_sig
         '''
         print('Loading data ...', end=' ')
         dataset = tf.data.TFRecordDataset(data_path)
         dataset = dataset.map(self._parse_train_).batch(batch_size)
 
         iterator = dataset.make_one_shot_iterator()
-        _, LR_out, HR_out = iterator.get_next()
+        _, _, HR_out = iterator.get_next()
 
-        data_LR = None
         with tf.Session() as sess:
             N, mu, sigma = 0, 0, 0
             try:
                 while True:
-
                     data_HR = sess.run(HR_out)
-                    data_LR = sess.run(LR_out)
-                    
+
                     N_batch, h, w, c = data_HR.shape
                     N_new = N + N_batch
+
                     mu_batch = np.mean(data_HR, axis=(0, 1, 2))
                     sigma_batch = np.var(data_HR, axis=(0, 1, 2))
 
@@ -610,6 +610,29 @@ class PhIREGANs:
 
             except tf.errors.OutOfRangeError:
                 pass
+
         self.mu_sig = [mu, np.sqrt(sigma)]
-        self.LR_data_shape = data_LR.shape
+
         print('Done.')
+
+    def set_LR_data_shape(self, data_path):
+        '''
+            Compute mu, sigma for all channels of data
+            inputs:
+                data_path - (string) should be the path to the TRAINING DATA since mu and sigma are
+                            calculated based on the trainind data regardless of if pretraining,
+                            training, or testing.
+            outputs:
+                sets self.LR_data_shape
+        '''
+        print('Loading data ...', end=' ')
+        dataset = tf.data.TFRecordDataset(data_path)
+        dataset = dataset.map(self._parse_test_).batch(1)
+
+        iterator = dataset.make_one_shot_iterator()
+        _, LR_out = iterator.get_next()
+
+        with tf.Session() as sess:
+            data_LR = sess.run(LR_out)
+        
+        self.LR_data_shape = data_LR.shape[1:]
