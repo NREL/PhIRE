@@ -1,18 +1,13 @@
 ''' @author: Andrew Glaws, Karen Stengel, Ryan King
-    based on architecture from : Ledig, Christian, et al. "Photo-realistic single image super-resolution using a generative adversarial network." Proceedings of the IEEE conference on computer vision and pattern recognition. 2017.
 '''
 import tensorflow as tf
 import numpy as np
 import sys
 sys.path.append('utils')
-sys.path.append('../autoencoder')
-sys.path.append('../VGG19')
 from layer import *
-#from autoencoder2d_64 import autoencoder2d
-#from vgg19 import VGG19
 
 class SRGAN(object):
-    def __init__(self, x_LR=None, x_HR=None, r=None, status='pre-training', loss_type='MSE', alpha_adverse = 0.001):
+    def __init__(self, x_LR=None, x_HR=None, r=None, status='pre-training', alpha_adverse = 0.001):
 
         status = status.lower()
         if status not in ['pre-training', 'training', 'testing']:
@@ -29,25 +24,20 @@ class SRGAN(object):
 
         if status in ['pre-training', 'training']:
             self.x_SR = self.generator(self.x_LR, r=r, is_training=True)
-
-            if loss_type in ['AE', 'MSEandAE']:
-                self.loss_net = autoencoder2d(None)
-            elif loss_type in ['VGG', 'MSEandVGG']:
-                self.loss_net = VGG19(None)
         else:
             self.x_SR = self.generator(self.x_LR, r=r, is_training=False)
 
         self.g_variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='generator')
 
         if status == 'pre-training':
-            self.g_loss = self.compute_losses(x_HR, self.x_SR, None, None, alpha_adverse, isGAN=False, loss_type=loss_type)
+            self.g_loss = self.compute_losses(x_HR, self.x_SR, None, None, alpha_adverse, isGAN=False)
 
         elif status == 'training':
             self.disc_HR = self.discriminator(x_HR, reuse=False)
             self.disc_SR = self.discriminator(self.x_SR, reuse=True)
             self.d_variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='discriminator')
 
-            loss_out = self.compute_losses(x_HR, self.x_SR, self.disc_HR, self.disc_SR, alpha_adverse, isGAN=True, loss_type=loss_type)
+            loss_out = self.compute_losses(x_HR, self.x_SR, self.disc_HR, self.disc_SR, alpha_adverse, isGAN=True)
             self.g_loss = loss_out[0]
             self.d_loss = loss_out[1]
             self.advers_perf = loss_out[2]
@@ -168,58 +158,15 @@ class SRGAN(object):
         return downscaled
 
 
-    def compute_losses(self, x_HR, x_SR, d_HR, d_SR, alpha_adverse = 0.001, isGAN=False, loss_type='MSE'):
+    def compute_losses(self, x_HR, x_SR, d_HR, d_SR, alpha_adverse = 0.001, isGAN=False):
         """Compute the losses for the generator and discriminator networks"""
 
-        def compute_perceptual_loss(x_HR, x_SR, loss_type='MSE'):
+        def compute_perceptual_loss(x_HR, x_SR):
             N_batch = tf.shape(x_HR)[0]
-            if loss_type is 'MSE':
-                content_loss = tf.reduce_mean((x_HR - x_SR)**2, axis=[1, 2, 3])
-                return content_loss
+            content_loss = tf.reduce_mean((x_HR - x_SR)**2, axis=[1, 2, 3])
+            
+            return content_loss
 
-            elif loss_type is 'AE':
-                phi_HR, _ = self.loss_net.build_model(x_HR, status='perceptual_loss', reuse=False)
-                phi_SR, _ = self.loss_net.build_model(x_SR, status='perceptual_loss', reuse=True)
-
-                content_loss = tf.zeros_like(x_HR[:, 0, 0, 0])
-                for i in range(len(phi_HR)):
-                    l2_loss = tf.reduce_mean((phi_HR[i] - phi_SR[i])**2, axis=[1, 2, 3])
-                    content_loss += l2_loss
-                return content_loss
-
-            elif loss_type is 'MSEandAE':
-                phi_HR, _ = self.loss_net.build_model(x_HR, status='perceptual_loss', reuse=False)
-                phi_SR, _ = self.loss_net.build_model(x_SR, status='perceptual_loss', reuse=True)
-
-                content_loss = tf.reduce_mean((x_HR - x_SR)**2, axis=[1, 2, 3])
-                for i in range(len(phi_HR)):
-                    l2_loss = tf.reduce_mean((phi_HR[i] - phi_SR[i])**2, axis=[1, 2, 3])
-                    content_loss += l2_loss
-                return content_loss
-
-            elif loss_type is 'VGG':
-                _, phi_HR = self.loss_net.build_model(tf.concat([x_HR, x_HR, x_HR], axis=-1), reuse=False)
-                _, phi_SR = self.loss_net.build_model(tf.concat([x_SR, x_SR, x_SR], axis=-1), reuse=True)
-
-                content_loss = tf.zeros_like(x_HR[:, 0, 0, 0])
-                for i in range(len(phi_HR)):
-                    l2_loss = tf.reduce_mean((phi_HR[i] - phi_SR[i])**2, axis=[1, 2, 3])
-                    content_loss += l2_loss
-                return content_loss
-
-            elif loss_type is 'MSEandVGG':
-                _, phi_HR = self.loss_net.build_model(tf.concat([x_HR, x_HR, x_HR], axis=-1), reuse=False)
-                _, phi_SR = self.loss_net.build_model(tf.concat([x_SR, x_SR, x_SR], axis=-1), reuse=True)
-
-                content_loss = tf.reduce_mean((x_HR - x_SR)**2, axis=[1, 2, 3])
-                for i in range(len(phi_HR)):
-                    l2_loss = tf.reduce_mean((phi_HR[i] - phi_SR[i])**2, axis=[1, 2, 3])
-                    content_loss += l2_loss
-                return content_loss
-
-            else:
-                print('Error in content loss function.')
-                exit()
 
         def compute_adversarial_loss(d_HR, d_SR):
             g_loss = tf.nn.sigmoid_cross_entropy_with_logits(logits=d_SR, labels=tf.ones_like(d_SR))
@@ -238,7 +185,7 @@ class SRGAN(object):
 
             return adv_TP, adv_TN, adv_FP, adv_FN
 
-        percept_loss = compute_perceptual_loss(x_HR, x_SR, loss_type=loss_type)
+        percept_loss = compute_perceptual_loss(x_HR, x_SR)
 
         if isGAN:
             g_advers_loss, d_advers_loss = compute_adversarial_loss(d_HR, d_SR)

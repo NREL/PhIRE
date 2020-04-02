@@ -27,8 +27,8 @@ test_path = path_prefix + 'example_data/' + variable_to_SR + '_example_LR_valida
 
 val_path = "" #CCSM or 1d training set data.
 
-model_path_lr = 'models/lr-mr_5x_' + variable_to_SR + '_model/SRGAN'
-model_path_hr = 'models/mr-hr_10x_' + variable_to_SR + '_model/SRGAN'
+model_path_lr = 'models/lr-mr_10x_' + variable_to_SR + '_model/SRGAN'
+model_path_hr = 'models/mr-hr_5x_' + variable_to_SR + '_model/SRGAN'
 
 
 #SOLAR

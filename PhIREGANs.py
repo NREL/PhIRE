@@ -3,11 +3,9 @@
 import os
 import numpy as np
 import tensorflow as tf
-import matplotlib.pyplot as plt
 from time import strftime, time
 import sys
 sys.path.append('utils/')
-print(sys.path)
 from utils import *
 from srgan import SRGAN
 
@@ -27,7 +25,6 @@ class PhIREGANs:
     DEFAULT_PRINT_EVERY = 1000 # How frequently (in iterations) to write out performance
     DEFAULT_MU_SIG = [0, 0.0]
 
-    DEFAULT_LOSS_TYPE = 'MSE'
     DEFAULT_DATA_TYPE = 'wind'
 
     def __init__(self, num_epochs = None, learn_rate = None, e_shift = None, save = None, print = None, mu_sig = None, loss_t = None, d_type = None):
@@ -38,15 +35,8 @@ class PhIREGANs:
         self.save_every = save if save is not None else self.DEFAULT_SAVE_EVERY
         self.print_every = print if print is not None else self.DEFAULT_PRINT_EVERY
         self.mu_sig = mu_sig if mu_sig is not None else self.DEFAULT_MU_SIG
-        self.loss_type = loss_t if loss_t is not None else self.DEFAULT_LOSS_TYPE
         self.data_type = d_type if d_type is not None else self.DEFAULT_DATA_TYPE
         self.LR_data_shape = None
-
-        if self.loss_type in ['AE', 'MSEandAE']:
-            self.loss_model = '../autoencoder/model/latest2d/autoencoder'
-            #loss_model = '../autoencoder/model/latest3d/autoencoder'
-        elif self.loss_type in ['VGG', 'MSEandVGG']:
-            self.loss_model = '../VGG19/model/vgg19'
 
         # Set various paths for where to save data
         self.now = strftime('%Y%m%d-%H%M%S')
@@ -58,9 +48,6 @@ class PhIREGANs:
 
     def setDataType(self, dt):
         self.data_type = dt
-
-    def setLoss_type(self, lt):
-        self.loss_type = lt
 
     def setSave_every(self, in_save_every):
         self.save_every = in_save_every
@@ -85,7 +72,7 @@ class PhIREGANs:
 
     def pre_train(self, r, train_path, test_path, model_path, batch_size = 100):
         '''
-            This method trains the generator without using a disctiminator/adversarial training and using MSE. This method should be called to sufficiently train the generator to produce decent images before moving on to adversarial training with the train() method.
+            This method trains the generator without using a disctiminator/adversarial training. This method should be called to sufficiently train the generator to produce decent images before moving on to adversarial training with the train() method.
 
             inputs:
                 r - (int array) should be array of prime factorization of amount of super-resolution to perform
@@ -99,7 +86,6 @@ class PhIREGANs:
         '''
 
         """Pretrain network (i.e., no adversarial component)."""
-        print("model name: ", self.model_name)
         self.set_mu_sig(train_path, batch_size)
         scale = np.prod(r)
 
@@ -109,7 +95,7 @@ class PhIREGANs:
         x_HR = tf.placeholder(tf.float32, [None, self.LR_data_shape[1]*scale,  self.LR_data_shape[2]*scale, self.LR_data_shape[3]])
 
         # Initialize network and set optimizer
-        model = SRGAN(x_LR, x_HR, r=r, status='pre-training', loss_type= self.loss_type)
+        model = SRGAN(x_LR, x_HR, r=r, status='pre-training')
 
         optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
         g_train_op = optimizer.minimize(model.g_loss, var_list= model.g_variables)
@@ -117,8 +103,6 @@ class PhIREGANs:
 
         g_saver = tf.train.Saver(var_list=model.g_variables, max_to_keep=10000)
         print('Done.')
-
-        print('Number of generator params: %d' %(count_params(model.g_variables)))
 
         print('Building data pipeline ...', end=' ')
         ds_train = tf.data.TFRecordDataset(train_path)
@@ -158,19 +142,6 @@ class PhIREGANs:
                 g_saver.restore(sess, model_path)
                 print('Done.')
 
-            # Load perceptual loss network data if necessary
-            if self.loss_type in ['AE', 'MSEandAE', 'VGG', 'MSEandVGG']:
-                # Restore perceptual loss network, if necessary
-                print('Loading perceptual loss network...', end=' ')
-                var = tf.global_variables()
-                if self.loss_type in ['AE', 'MSEandAE']:
-                    loss_var = [var_ for var_ in var if 'encoder' in var_.name]
-                elif self.loss_type in ['VGG', 'MSEandVGG']:
-                    loss_var = [var_ for var_ in var if 'vgg19' in var_.name]
-                saver = tf.train.Saver(var_list=loss_var)
-                saver.restore(sess, self.loss_model)
-                print('Done.')
-
             # Start training
             iters = 0
             for epoch in range(self.epoch_shift+1, self.epoch_shift+self.N_epochs+1):
@@ -192,7 +163,6 @@ class PhIREGANs:
 
                         batch_SR = sess.run(model.x_SR, feed_dict=feed_dict)
 
-                        #print(np.min(batch_SR), np.mean(batch_SR), np.max(batch_SR))
                         sess.run(g_train_op, feed_dict=feed_dict)
                         gl = sess.run(model.g_loss, feed_dict={x_HR: batch_HR, x_LR: batch_LR})
 
@@ -229,8 +199,7 @@ class PhIREGANs:
 
                         epoch_g_loss += gl*N_batch
                         N_test += N_batch
-                        print("line 180, ", type(self.mu_sig[1]), type(self.mu_sig[0]), np.amin(batch_LR), np.mean(batch_LR), np.amax(batch_LR))
-
+                        
                         batch_LR = self.mu_sig[1]*batch_LR + self.mu_sig[0]
                         batch_SR = self.mu_sig[1]*batch_SR + self.mu_sig[0]
                         batch_HR = self.mu_sig[1]*batch_HR + self.mu_sig[0]
@@ -273,7 +242,7 @@ class PhIREGANs:
 
     def train(self, r, train_path, test_path, model_path, batch_size=100, alpha_adverse = 0.001):
         '''
-            This method trains the generator using a disctiminator/adversarial training and MSE. This method should be called to sufficiently train the generator to produce decent images before moving on to adversarial training with the train() method.
+            This method trains the generator using a disctiminator/adversarial training. This method should be called to sufficiently train the generator to produce decent images before moving on to adversarial training with the train() method.
 
             inputs:
                 r               -   (int array) should be array of prime factorization of amount of super-resolution to perform
@@ -292,7 +261,7 @@ class PhIREGANs:
         """Train network using GANs. Only run this after model has been sufficiently pre-trained."""
 
         self.set_mu_sig(train_path, batch_size)
-        print(self.loss_type, self.mu_sig, self.LR_data_shape)
+        
         scale = np.prod(r)
 
         print('Initializing network ...', end=' ')
@@ -303,7 +272,7 @@ class PhIREGANs:
         x_HR = tf.placeholder(tf.float32, [None, self.LR_data_shape[1]*scale,  self.LR_data_shape[2]*scale, self.LR_data_shape[3]])
 
         # Initialize network and set optimizer
-        model = SRGAN(x_LR, x_HR, r=r, status='training', loss_type=self.loss_type, alpha_adverse = alpha_adverse)
+        model = SRGAN(x_LR, x_HR, r=r, status='training', alpha_adverse = alpha_adverse)
 
         optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
         g_train_op = optimizer.minimize(model.g_loss, var_list=model.g_variables)
@@ -313,9 +282,6 @@ class PhIREGANs:
         g_saver = tf.train.Saver(var_list=model.g_variables, max_to_keep=10000)
         gd_saver = tf.train.Saver(var_list=(model.g_variables+model.d_variables), max_to_keep=10000)
         print('Done.')
-
-        print('Number of generator params: %d' %(count_params(model.g_variables)))
-        print('Number of discriminator params: %d' %(count_params(model.d_variables)))
 
         print('Building data pipeline ...', end=' ')
         ds_train = tf.data.TFRecordDataset(train_path)
@@ -362,19 +328,6 @@ class PhIREGANs:
 
             print('Done.')
 
-            # Load perceptual loss network data if necessary
-            if self.loss_type in ['AE', 'MSEandAE', 'VGG', 'MSEandVGG']:
-                # Restore perceptual loss network, if necessary
-                print('Loading perceptual loss network...', end=' ')
-                var = tf.global_variables()
-                if self.loss_type in ['AE', 'MSEandAE']:
-                    loss_var = [var_ for var_ in var if 'encoder' in var_.name]
-                elif self.loss_type in ['VGG', 'MSEandVGG']:
-                    loss_var = [var_ for var_ in var if 'vgg19' in var_.name]
-                saver = tf.train.Saver(var_list=loss_var)
-                saver.restore(sess, self.loss_model)
-                print('Done.')
-
             # Start training
             iters = 0
             for epoch in range(self.epoch_shift+1, self.epoch_shift+self.N_epochs+1):
@@ -408,7 +361,6 @@ class PhIREGANs:
                         gen_count = 0
                         while (dl < 0.460) and gen_count < 30:
                             #discriminator did too well. train the generator extra
-                            #print("generator training. discriminator loss : ", dl, "count : ", gen_count)
                             sess.run(g_train_op, feed_dict=feed_dict)
                             gl, dl, p = sess.run([model.g_loss, model.d_loss, model.advers_perf], feed_dict=feed_dict)
                             gen_count += 1
@@ -416,7 +368,6 @@ class PhIREGANs:
                         dis_count = 0
                         while (dl >= 0.6) and dis_count <30:
                             #generator fooled the discriminator. train the discriminator extra
-                            #print("discriminator training. discriminator loss : ", dl, "count : ", dis_count)
                             sess.run(d_train_op, feed_dict=feed_dict)
                             gl, dl, p = sess.run([model.g_loss, model.d_loss, model.advers_perf], feed_dict=feed_dict)
                             dis_count += 1
@@ -449,7 +400,6 @@ class PhIREGANs:
                     test_out = None
                     epoch_g_loss, epoch_d_loss, N_test = 0, 0, 0
                     while True:
-                        batch_idx, batch_LR, batch_HR, batch_lat, batch_lon = None, None, None, None, None
                         batch_idx, batch_LR, batch_HR = sess.run([idx, LR_out, HR_out])
                         N_batch = batch_LR.shape[0]
 
@@ -502,7 +452,7 @@ class PhIREGANs:
 
     def test(self, r, train_path, val_path, model_path, batch_size = 100):
         '''
-            This method trains the generator using a disctiminator/adversarial training and MSE. This method should be called to sufficiently train the generator to produce decent images before moving on to adversarial training with the train() method.
+            This method trains the generator using a disctiminator/adversarial training. This method should be called to sufficiently train the generator to produce decent images before moving on to adversarial training with the train() method.
 
             inputs:
                 r           -   (int array) should be array of prime factorization of amount of
@@ -523,16 +473,14 @@ class PhIREGANs:
             self.set_mu_sig(train_path, batch_size)
         scale = np.prod(r)
 
-        idx, LR_out, lat, lon = None, None, None, None
+        idx, LR_out = None, None
         print('Initializing network ...', end=' ')
         tf.reset_default_graph()
         # Set low-res data place holders
         x_LR = tf.placeholder(tf.float32, [None, None, None, 2])
 
-        idx, LR_out, HR_out= None, None, None
-
         # Initialize network
-        model = SRGAN(x_LR, r=r, status='testing', loss_type=self.loss_type)
+        model = SRGAN(x_LR, r=r, status='testing')
 
         # Initialize network and set optimizer
         init = tf.global_variables_initializer()
@@ -550,7 +498,6 @@ class PhIREGANs:
                                                    ds_test.output_shapes)
         idx, LR_out = iterator.get_next()
 
-        print(idx)
         init_iter_test  = iterator.make_initializer(ds_test)
         print('Done.')
 
@@ -570,8 +517,7 @@ class PhIREGANs:
                 data_out = None
                 while True:
 
-                    batch_idx, batch_LR,batch_lat, batch_lon = None, None, None, None, None, None
-                    batch_idx, batch_LR, batch_HR = sess.run([idx, LR_out, HR_out])
+                    batch_idx, batch_LR = sess.run([idx, LR_out])
                     N_batch = batch_LR.shape[0]
 
                     feed_dict = {x_LR:batch_LR}
@@ -694,8 +640,7 @@ class PhIREGANs:
 
         iterator = dataset.make_one_shot_iterator()
         _, LR_out, HR_out = iterator.get_next()
-        #iter_out = iterator.get_next()
-        #print(iter_out)
+
         data_LR = None
         with tf.Session() as sess:
             N, mu, sigma = 0, 0, 0
@@ -704,8 +649,7 @@ class PhIREGANs:
 
                     data_HR = sess.run(HR_out)
                     data_LR = sess.run(LR_out)
-                    #print("HI,", data_LR.shape)
-                    #print(data_HR.shape, np.min(data_HR),np.mean(data_HR),np.max(data_HR))
+                    
                     N_batch, h, w, c = data_HR.shape
                     N_new = N + N_batch
                     mu_batch = np.mean(data_HR, axis=(0, 1, 2))
@@ -716,9 +660,7 @@ class PhIREGANs:
 
                     N = N_new
 
-            except Exception as e:#tf.errors.OutOfRangeError:
-                #print(e)
-                #print("error")
+            except tf.errors.OutOfRangeError:
                 pass
         self.mu_sig = [mu, np.sqrt(sigma)]
         self.LR_data_shape = data_LR.shape
