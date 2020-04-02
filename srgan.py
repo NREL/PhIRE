@@ -2,12 +2,10 @@
 '''
 import tensorflow as tf
 import numpy as np
-import sys
-sys.path.append('utils')
 from layer import *
 
 class SRGAN(object):
-    def __init__(self, x_LR=None, x_HR=None, r=None, status='pre-training', alpha_adverse = 0.001):
+    def __init__(self, x_LR=None, x_HR=None, r=None, status='pre-training', alpha_adverse=0.001):
 
         status = status.lower()
         if status not in ['pre-training', 'training', 'testing']:
@@ -102,7 +100,6 @@ class SRGAN(object):
     def discriminator(self, x, reuse=False):
         N, h, w, C = tf.shape(x)[0], x.get_shape()[1], x.get_shape()[2], x.get_shape()[3]
 
-        # alternate the stride between 1 and 2 every other layer
         with tf.variable_scope('discriminator', reuse=reuse):
             with tf.variable_scope('conv1'):
                 x = conv_layer_2d(x, [3, 3, C, 32], 1)
@@ -146,55 +143,25 @@ class SRGAN(object):
 
         return x
 
-
-    def downscale_image(self, x, K):
-        """Downsale the iamge by a factor of K."""
-        arr = np.zeros([K, K, 3, 3])
-        arr[:, :, 0, 0] = 1.0 / K ** 2
-        arr[:, :, 1, 1] = 1.0 / K ** 2
-        arr[:, :, 2, 2] = 1.0 / K ** 2
-        weight = tf.constant(arr, dtype=tf.float32)
-        downscaled = tf.nn.conv2d(x, weight, strides=[1, K, K, 1], padding='SAME')
-        return downscaled
-
-
-    def compute_losses(self, x_HR, x_SR, d_HR, d_SR, alpha_adverse = 0.001, isGAN=False):
-        """Compute the losses for the generator and discriminator networks"""
-
-        def compute_perceptual_loss(x_HR, x_SR):
-            N_batch = tf.shape(x_HR)[0]
-            content_loss = tf.reduce_mean((x_HR - x_SR)**2, axis=[1, 2, 3])
-            
-            return content_loss
-
-
-        def compute_adversarial_loss(d_HR, d_SR):
-            g_loss = tf.nn.sigmoid_cross_entropy_with_logits(logits=d_SR, labels=tf.ones_like(d_SR))
-
-            d_loss = tf.nn.sigmoid_cross_entropy_with_logits(logits=tf.concat([d_HR, d_SR], axis=0),
-                                                             labels=tf.concat([tf.ones_like(d_HR), tf.zeros_like(d_SR)], axis=0))
-            d_loss = tf.reduce_mean(d_loss)
-
-            return g_loss, d_loss
-
-        def compute_adversarial_performance(d_HR, d_SR):
-            adv_TP = tf.reduce_mean(tf.cast(tf.sigmoid(d_HR) > 0.5, tf.float32))
-            adv_TN = tf.reduce_mean(tf.cast(tf.sigmoid(d_SR) < 0.5, tf.float32))
-            adv_FP = tf.reduce_mean(tf.cast(tf.sigmoid(d_SR) > 0.5, tf.float32))
-            adv_FN = tf.reduce_mean(tf.cast(tf.sigmoid(d_HR) < 0.5, tf.float32))
-
-            return adv_TP, adv_TN, adv_FP, adv_FN
-
-        percept_loss = compute_perceptual_loss(x_HR, x_SR)
+    def compute_losses(self, x_HR, x_SR, d_HR, d_SR, alpha_advers=0.001, isGAN=False):
+        
+        content_loss = tf.reduce_mean((x_HR - x_SR)**2, axis=[1, 2, 3])
 
         if isGAN:
-            g_advers_loss, d_advers_loss = compute_adversarial_loss(d_HR, d_SR)
-            advers_perf = compute_adversarial_performance(d_HR, d_SR)
+            g_advers_loss = tf.nn.sigmoid_cross_entropy_with_logits(logits=d_SR, labels=tf.ones_like(d_SR))
 
-            g_loss = tf.reduce_mean(percept_loss) + alpha_adverse*tf.reduce_mean(g_advers_loss)
-            d_loss = d_advers_loss
+            d_advers_loss = tf.nn.sigmoid_cross_entropy_with_logits(logits=tf.concat([d_HR, d_SR], axis=0),
+                                                                    labels=tf.concat([tf.ones_like(d_HR), tf.zeros_like(d_SR)], axis=0))
 
-            return g_loss, d_loss, advers_perf, percept_loss, g_advers_loss
+            advers_perf = [tf.reduce_mean(tf.cast(tf.sigmoid(d_HR) > 0.5, tf.float32)), # % true positive
+                           tf.reduce_mean(tf.cast(tf.sigmoid(d_SR) < 0.5, tf.float32)), # % true negative
+                           tf.reduce_mean(tf.cast(tf.sigmoid(d_SR) > 0.5, tf.float32)), # % false positive
+                           tf.reduce_mean(tf.cast(tf.sigmoid(d_HR) < 0.5, tf.float32))] # % false negative
+
+            g_loss = tf.reduce_mean(content_loss) + alpha_advers*tf.reduce_mean(g_advers_loss)
+            d_loss = tf.reduce_mean(d_advers_loss)
+
+            return g_loss, d_loss, advers_perf, content_loss, g_advers_loss
         else:
-
-            return tf.reduce_mean(percept_loss)
+            return tf.reduce_mean(content_loss)
+    

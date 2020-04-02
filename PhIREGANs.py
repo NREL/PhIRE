@@ -4,8 +4,6 @@ import os
 import numpy as np
 import tensorflow as tf
 from time import strftime, time
-import sys
-sys.path.append('utils/')
 from utils import *
 from srgan import SRGAN
 
@@ -27,7 +25,7 @@ class PhIREGANs:
 
     DEFAULT_DATA_TYPE = 'wind'
 
-    def __init__(self, num_epochs = None, learn_rate = None, e_shift = None, save = None, print = None, mu_sig = None, loss_t = None, d_type = None):
+    def __init__(self, num_epochs=None, learn_rate=None, e_shift=None, save=None, print=None, mu_sig=None, d_type=None):
 
         self.N_epochs = num_epochs if num_epochs is not None else self.DEFAULT_N_EPOCHS
         self.learning_rate = learn_rate if learn_rate is not None else self.DEFAULT_LEARNING_RATE
@@ -41,9 +39,6 @@ class PhIREGANs:
         # Set various paths for where to save data
         self.now = strftime('%Y%m%d-%H%M%S')
         self.model_name = '/'.join(['model', self.now])
-        self.layerviz_path = '/'.join(['layer_viz_imgs', self.now])
-        self.log_path ='/'.join(['training_logs', self.now])
-        #print("model name: ", model_name)
         self.test_data_path ='data_out/' + self.data_type + '/' + self.model_name
 
     def setDataType(self, dt):
@@ -70,7 +65,7 @@ class PhIREGANs:
     def set_test_data_path(self, in_data_path):
         self.test_data_path = in_data_path
 
-    def pre_train(self, r, train_path, test_path, model_path, batch_size = 100):
+    def pre_train(self, r, train_path, test_path, model_path, batch_size=100):
         '''
             This method trains the generator without using a disctiminator/adversarial training. This method should be called to sufficiently train the generator to produce decent images before moving on to adversarial training with the train() method.
 
@@ -119,18 +114,6 @@ class PhIREGANs:
         init_iter_test  = iterator.make_initializer(ds_test)
         print('Done.')
 
-        # Create summary values for TensorBoard
-        g_loss_iters_ph = tf.placeholder(tf.float32, shape=None)
-        g_loss_iters = tf.summary.scalar('g_loss_vs_iters', g_loss_iters_ph)
-        iter_summ = tf.summary.merge([g_loss_iters])
-
-        g_loss_epoch_ph = tf.placeholder(tf.float32, shape=None)
-        g_loss_epoch = tf.summary.scalar('g_loss_vs_epochs', g_loss_epoch_ph)
-        epoch_summ = tf.summary.merge([g_loss_epoch])
-
-        summ_train_writer = tf.summary.FileWriter(self.log_path+'-train', tf.get_default_graph())
-        summ_test_writer  = tf.summary.FileWriter(self.log_path+'-test',  tf.get_default_graph())
-
         with tf.Session() as sess:
             print('Training network ...')
 
@@ -165,9 +148,6 @@ class PhIREGANs:
 
                         sess.run(g_train_op, feed_dict=feed_dict)
                         gl = sess.run(model.g_loss, feed_dict={x_HR: batch_HR, x_LR: batch_LR})
-
-                        summ = sess.run(iter_summ, feed_dict={g_loss_iters_ph: gl})
-                        summ_train_writer.add_summary(summ, iters)
 
                         epoch_g_loss += gl*N_batch
                         N_train += N_batch
@@ -222,13 +202,6 @@ class PhIREGANs:
                     if (epoch % save_every) == 0:
                         np.save(test_save_path, test_out)
 
-                    # Write performance to TensorBoard
-                    summ = sess.run(epoch_summ, feed_dict={g_loss_epoch_ph: g_loss_train})
-                    summ_train_writer.add_summary(summ, epoch)
-
-                    summ = sess.run(epoch_summ, feed_dict={g_loss_epoch_ph: g_loss_test})
-                    summ_test_writer.add_summary(summ, epoch)
-
                     print('Epoch took %.2f seconds\n' %(time() - start_time))
 
             # Save model after training is completed
@@ -240,7 +213,7 @@ class PhIREGANs:
         print('Done.')
         return model_dr
 
-    def train(self, r, train_path, test_path, model_path, batch_size=100, alpha_adverse = 0.001):
+    def train(self, r, train_path, test_path, model_path, batch_size=100, alpha_adverse=0.001):
         '''
             This method trains the generator using a disctiminator/adversarial training. This method should be called to sufficiently train the generator to produce decent images before moving on to adversarial training with the train() method.
 
@@ -298,22 +271,6 @@ class PhIREGANs:
         init_iter_train = iterator.make_initializer(ds_train)
         init_iter_test  = iterator.make_initializer(ds_test)
         print('Done.')
-
-        # Create summary values for TensorBoard
-        g_loss_iters_ph = tf.placeholder(tf.float32, shape=None)
-        d_loss_iters_ph = tf.placeholder(tf.float32, shape=None)
-        g_loss_iters = tf.summary.scalar('g_loss_vs_iters', g_loss_iters_ph)
-        d_loss_iters = tf.summary.scalar('d_loss_vs_iters', d_loss_iters_ph)
-        iter_summ = tf.summary.merge([g_loss_iters, d_loss_iters])
-
-        g_loss_epoch_ph = tf.placeholder(tf.float32, shape=None)
-        d_loss_epoch_ph = tf.placeholder(tf.float32, shape=None)
-        g_loss_epoch = tf.summary.scalar('g_loss_vs_epochs', g_loss_epoch_ph)
-        d_loss_epoch = tf.summary.scalar('d_loss_vs_epochs', d_loss_epoch_ph)
-        epoch_summ = tf.summary.merge([g_loss_epoch, d_loss_epoch])
-
-        summ_train_writer = tf.summary.FileWriter(self.log_path+'-train', tf.get_default_graph())
-        summ_test_writer  = tf.summary.FileWriter(self.log_path+'-test',  tf.get_default_graph())
 
         with tf.Session() as sess:
             print('Training network ...')
@@ -373,8 +330,6 @@ class PhIREGANs:
                             dis_count += 1
 
                         pl, gal = sess.run([model.p_loss, model.g_ad_loss], feed_dict=feed_dict)
-                        summ = sess.run(iter_summ, feed_dict={g_loss_iters_ph: gl, d_loss_iters_ph: dl})
-                        summ_train_writer.add_summary(summ, iters)
 
                         epoch_g_loss += gl*N_batch
                         epoch_d_loss += dl*N_batch
@@ -433,13 +388,6 @@ class PhIREGANs:
                     if (epoch % self.save_every) == 0:
                         np.save(test_out_path +'test_SR_epoch{0:05d}'.format(epoch)+'.npy', test_out)
 
-                    # Write performance to TensorBoard
-                    summ = sess.run(epoch_summ, feed_dict={g_loss_epoch_ph: g_loss_train, d_loss_epoch_ph: d_loss_train})
-                    summ_train_writer.add_summary(summ, epoch)
-
-                    summ = sess.run(epoch_summ, feed_dict={g_loss_epoch_ph: g_loss_test, d_loss_epoch_ph: d_loss_test})
-                    summ_test_writer.add_summary(summ, epoch)
-
                     print('Epoch took %.2f seconds\n' %(time() - start_time))
             g_model_dr, gd_model_dr = '/'.join([self.model_name, 'SRGAN', 'SRGAN']), '/'.join([self.model_name, 'SRGAN-all', 'SRGAN'])
             if not os.path.exists(self.model_name):
@@ -450,7 +398,7 @@ class PhIREGANs:
         print('Done.')
         return [g_model_dr, gd_model_dr]
 
-    def test(self, r, train_path, val_path, model_path, batch_size = 100):
+    def test(self, r, train_path, val_path, model_path, batch_size=100):
         '''
             This method trains the generator using a disctiminator/adversarial training. This method should be called to sufficiently train the generator to produce decent images before moving on to adversarial training with the train() method.
 

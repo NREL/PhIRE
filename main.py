@@ -2,9 +2,7 @@
 '''
 import numpy as np
 import matplotlib.pyplot as plt
-import sys
 from PhIREGANs import *
-sys.path.append('utils')
 from utils import *
 
 path_prefix = ''
