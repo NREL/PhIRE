@@ -1,37 +1,48 @@
-import os
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
 
-
 def conv_layer_2d(x, filter_shape, stride, trainable=True):
-    filter_ = tf.get_variable(
+    W = tf.get_variable(
         name='weight',
         shape=filter_shape,
         dtype=tf.float32,
         initializer=tf.contrib.layers.xavier_initializer(),
         trainable=trainable)
-    x = tf.nn.conv2d(
+    b = tf.get_variable(
+        name='bias',
+        shape=[filter_shape[-1]],
+        dtype=tf.float32,
+        initializer=tf.contrib.layers.xavier_initializer(),
+        trainable=trainable)
+    x = tf.nn.bias_add(tf.nn.conv2d(
         input=x,
-        filter=filter_,
+        filter=W,
         strides=[1, stride, stride, 1],
-        padding='SAME')
+        padding='SAME'), b)
 
     return x
 
 def deconv_layer_2d(x, filter_shape, output_shape, stride, trainable=True):
     x = tf.pad(x, [[0,0], [3,3], [3,3], [0,0]], mode='reflect')
-    filter_ = tf.get_variable(
+    W = tf.get_variable(
         name='weight',
         shape=filter_shape,
         dtype=tf.float32,
         initializer=tf.contrib.layers.xavier_initializer(),
         trainable=trainable)
-    x = tf.nn.conv2d_transpose(
+    b = tf.get_variable(
+        name='bias',
+        shape=[output_shape[-1]],
+        dtype=tf.float32,
+        initializer=tf.contrib.layers.xavier_initializer(),
+        trainable=trainable)
+    x = tf.nn.bias_add(tf.nn.conv2d_transpose(
         value=x,
-        filter=filter_,
+        filter=W,
         output_shape=output_shape,
-        strides=[1, stride, stride, 1])
+        strides=[1, stride, stride, 1],
+        padding='SAME'), b)
 
     return x[:, 3:-3, 3:-3, :]
 
@@ -113,5 +124,5 @@ def plot_SR_data(idx, LR, SR, path):
         plt.xticks([], [])
         plt.yticks([], [])
 
-        plt.savefig(path+'/img{0:08d}.png'.format(idx[i]), dpi=200, bbox_inches='tight')
+        plt.savefig(path+'/img{0:05d}.png'.format(idx[i]), dpi=200, bbox_inches='tight')
         plt.close()

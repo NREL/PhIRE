@@ -4,7 +4,7 @@ import tensorflow as tf
 from utils import *
 
 class SR_NETWORK(object):
-    def __init__(self, x_LR=None, x_HR=None, r=None, status='pretraining', data_type=None, alpha_advers=0.001):
+    def __init__(self, x_LR=None, x_HR=None, r=None, status='pretraining', alpha_advers=0.001):
 
         status = status.lower()
         if status not in ['pretraining', 'training', 'testing']:
@@ -18,9 +18,9 @@ class SR_NETWORK(object):
             exit()
 
         if status in ['pretraining', 'training']:
-            self.x_SR = self.generator(self.x_LR, r=r, data_type=data_type, is_training=True)
+            self.x_SR = self.generator(self.x_LR, r=r, is_training=True)
         else:
-            self.x_SR = self.generator(self.x_LR, r=r, data_type=data_type, is_training=False)
+            self.x_SR = self.generator(self.x_LR, r=r, is_training=False)
 
         self.g_variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='generator')
 
@@ -49,7 +49,7 @@ class SR_NETWORK(object):
             self.disc_HR, self.disc_SR, self.d_variables = None, None, None
 
 
-    def generator(self, x, r, data_type=None, is_training=False, reuse=False):
+    def generator(self, x, r, is_training=False, reuse=False):
         if is_training:
             N, h, w, C = tf.shape(x)[0], x.get_shape()[1], x.get_shape()[2], x.get_shape()[3]
         else:
@@ -101,8 +101,6 @@ class SR_NETWORK(object):
             output_shape = [N, r_prod*h+2*k, r_prod*w+2*k, C]
             with tf.variable_scope('deconv_out'):
                 x = deconv_layer_2d(x, [k, k, C, C_in], output_shape, stride, k)
-                if data_type == 'solar':
-                    x = tf.nn.relu(x)
 
         return x
 

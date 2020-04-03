@@ -86,7 +86,7 @@ class PhIREGANs:
         x_LR = tf.placeholder(tf.float32, [None, h,             w,            C])
         x_HR = tf.placeholder(tf.float32, [None, h*np.prod(r),  w*np.prod(r), C])
 
-        model = SR_NETWORK(x_LR, x_HR, r=r, status='pretraining', data_type=self.data_type)
+        model = SR_NETWORK(x_LR, x_HR, r=r, status='pretraining')
 
         optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
         g_train_op = optimizer.minimize(model.g_loss, var_list= model.g_variables)
@@ -198,7 +198,7 @@ class PhIREGANs:
         x_LR = tf.placeholder(tf.float32, [None, h,             w,            C])
         x_HR = tf.placeholder(tf.float32, [None, h*np.prod(r),  w*np.prod(r), C])
 
-        model = SR_NETWORK(x_LR, x_HR, r=r, status='training', data_type=self.data_type, alpha_advers=alpha_advers)
+        model = SR_NETWORK(x_LR, x_HR, r=r, status='training', alpha_advers=alpha_advers)
 
         optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
         g_train_op = optimizer.minimize(model.g_loss, var_list=model.g_variables)
@@ -340,7 +340,7 @@ class PhIREGANs:
         
         x_LR = tf.placeholder(tf.float32, [None, None, None, C])
 
-        model = SR_NETWORK(x_LR, r=r, status='testing', data_type=self.data_type)
+        model = SR_NETWORK(x_LR, r=r, status='testing')
 
         init = tf.global_variables_initializer()
         g_saver = tf.train.Saver(var_list=model.g_variables, max_to_keep=10000)
@@ -379,7 +379,6 @@ class PhIREGANs:
 
                     batch_LR = self.mu_sig[1]*batch_LR + self.mu_sig[0]
                     batch_SR = self.mu_sig[1]*batch_SR + self.mu_sig[0]
-
                     if plot_data:
                         img_path = '/'.join([self.data_out_path, 'imgs'])
                         if not os.path.exists(img_path):
