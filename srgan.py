@@ -5,10 +5,10 @@ import numpy as np
 from layer import *
 
 class SRGAN(object):
-    def __init__(self, x_LR=None, x_HR=None, r=None, status='pre-training', alpha_adverse=0.001):
+    def __init__(self, x_LR=None, x_HR=None, r=None, status='pretraining', alpha_adverse=0.001):
 
         status = status.lower()
-        if status not in ['pre-training', 'training', 'testing']:
+        if status not in ['pretraining', 'training', 'testing']:
             print('Error in network status.')
             exit()
 
@@ -20,14 +20,14 @@ class SRGAN(object):
             print('Error in SR scaling. Variable r must be specified.')
             exit()
 
-        if status in ['pre-training', 'training']:
+        if status in ['pretraining', 'training']:
             self.x_SR = self.generator(self.x_LR, r=r, is_training=True)
         else:
             self.x_SR = self.generator(self.x_LR, r=r, is_training=False)
 
         self.g_variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='generator')
 
-        if status == 'pre-training':
+        if status == 'pretraining':
             self.g_loss = self.compute_losses(x_HR, self.x_SR, None, None, alpha_adverse, isGAN=False)
 
         elif status == 'training':
@@ -53,30 +53,35 @@ class SRGAN(object):
         else:
             N, h, w, C = tf.shape(x)[0], tf.shape(x)[1], tf.shape(x)[2], x.get_shape()[3]
 
+        k, stride = 3, 1
+        output_shape = [N, h+2*k, w+2*k, -1]
+
         with tf.variable_scope('generator', reuse=reuse):
             with tf.variable_scope('deconv1'):
                 C_in, C_out = C, 64
-                x = deconv_layer_2d(x, [3, 3, C_out, C_in], [N, h, w, C_out], 1)
+                output_shape[-1] = C_out
+                x = deconv_layer_2d(x, [k, k, C_out, C_in], output_shape, stride, k)
                 x = tf.nn.relu(x)
 
             skip_connection = x
 
             # B residual blocks
             C_in, C_out = C_out, 64
+            output_shape[-1] = C_out
             for i in range(16):
                 B_skip_connection = x
 
                 with tf.variable_scope('block_{}a'.format(i+1)):
-                    x = deconv_layer_2d(x, [3, 3, C_out, C_in], [N, h, w, C_out], 1)
+                    x = deconv_layer_2d(x, [k, k, C_out, C_in], output_shape, stride, k)
                     x = tf.nn.relu(x)
 
                 with tf.variable_scope('block_{}b'.format(i+1)):
-                    x = deconv_layer_2d(x, [3, 3, C_out, C_in], [N, h, w, C_out], 1)
+                    x = deconv_layer_2d(x, [k, k, C_out, C_in], output_shape, stride, k)
 
                 x = tf.add(x, B_skip_connection)
 
             with tf.variable_scope('deconv2'):
-                x = deconv_layer_2d(x, [3, 3, C_out, C_in], [N, h, w, C_out], 1)
+                x = deconv_layer_2d(x, [k, k, C_out, C_in], output_shape, stride, k)
                 x = tf.add(x, skip_connection)
 
             # Super resolution scaling
@@ -84,15 +89,16 @@ class SRGAN(object):
             for i, r_i in enumerate(r):
                 C_out = (r_i**2)*C_in
                 with tf.variable_scope('deconv{}'.format(i+3)):
-                    x = deconv_layer_2d(x, [3, 3, C_out, C_in], [N, r_prod*h, r_prod*w, C_out], 1)
+                    output_shape = [N, r_prod*h+2*k, r_prod*w+2*k, C_out]
+                    x = deconv_layer_2d(x, [k, k, C_out, C_in], output_shape, stride, k)
                     x = tf.depth_to_space(x, r_i)
                     x = tf.nn.relu(x)
 
                 r_prod *= r_i
 
-            C_out = C
+            output_shape = [N, r_prod*h+2*k, r_prod*w+2*k, C]
             with tf.variable_scope('deconv_out'):
-                x = deconv_layer_2d(x, [3, 3, C_out, C_in], [N, r_prod*h, r_prod*w, C_out], 1)
+                x = deconv_layer_2d(x, [k, k, C, C_in], output_shape, stride, k)
 
         return x
 

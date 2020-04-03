@@ -16,6 +16,7 @@ def conv_layer_2d(x, filter_shape, stride, trainable=True):
     return x
 
 def deconv_layer_2d(x, filter_shape, output_shape, stride, trainable=True):
+    x = tf.pad(x, [[0,0], [3,3], [3,3], [0,0]], mode='reflect')
     filter_ = tf.get_variable(
         name='weight',
         shape=filter_shape,
@@ -28,7 +29,7 @@ def deconv_layer_2d(x, filter_shape, output_shape, stride, trainable=True):
         output_shape=output_shape,
         strides=[1, stride, stride, 1])
 
-    return x
+    return x[:, 3:-3, 3:-3, :]
 
 def flatten_layer(x):
     input_shape = x.get_shape().as_list()
