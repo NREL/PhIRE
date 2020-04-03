@@ -1,71 +1,117 @@
-import numpy as np
-import matplotlib.pyplot as plt
-from time import time
 import os
+import numpy as np
+import tensorflow as tf
+import matplotlib.pyplot as plt
 
-def image_out(LR, SR, HR, file_name):
-    assert LR.shape[0] == SR.shape[0], "LR and SR contain a different number of images"
-    assert SR.shape[1] == HR.shape[1] and SR.shape[2] == HR.shape[2], "HR and SR are different shapes"
+
+def conv_layer_2d(x, filter_shape, stride, trainable=True):
+    filter_ = tf.get_variable(
+        name='weight',
+        shape=filter_shape,
+        dtype=tf.float32,
+        initializer=tf.contrib.layers.xavier_initializer(),
+        trainable=trainable)
+    x = tf.nn.conv2d(
+        input=x,
+        filter=filter_,
+        strides=[1, stride, stride, 1],
+        padding='SAME')
+
+    return x
+
+def deconv_layer_2d(x, filter_shape, output_shape, stride, trainable=True):
+    x = tf.pad(x, [[0,0], [3,3], [3,3], [0,0]], mode='reflect')
+    filter_ = tf.get_variable(
+        name='weight',
+        shape=filter_shape,
+        dtype=tf.float32,
+        initializer=tf.contrib.layers.xavier_initializer(),
+        trainable=trainable)
+    x = tf.nn.conv2d_transpose(
+        value=x,
+        filter=filter_,
+        output_shape=output_shape,
+        strides=[1, stride, stride, 1])
+
+    return x[:, 3:-3, 3:-3, :]
+
+def flatten_layer(x):
+    input_shape = x.get_shape().as_list()
+    dim = input_shape[1] * input_shape[2] * input_shape[3]
+    transposed = tf.transpose(x, (0, 3, 1, 2))
+    x = tf.reshape(transposed, [-1, dim])
+
+    return x
+
+def dense_layer(x, out_dim, trainable=True):
+    in_dim = x.get_shape().as_list()[-1]
+    W = tf.get_variable(
+        name='weight',
+        shape=[in_dim, out_dim],
+        dtype=tf.float32,
+        initializer=tf.truncated_normal_initializer(stddev=0.02),
+        trainable=trainable)
+    b = tf.get_variable(
+        name='bias',
+        shape=[out_dim],
+        dtype=tf.float32,
+        initializer=tf.constant_initializer(0.0),
+        trainable=trainable)
+    x = tf.add(tf.matmul(x, W), b)
+
+    return x
+
+def pixel_shuffle_layer(x, r, n_split):
+    def PS(x, r):
+        N, h, w = tf.shape(x)[0], tf.shape(x)[1], tf.shape(x)[2]
+        x = tf.reshape(x, (N, h, w, r, r))
+        x = tf.transpose(x, (0, 1, 2, 4, 3))
+        x = tf.split(x, h, 1)
+        x = tf.concat([tf.squeeze(x_) for x_ in x], 2)
+        x = tf.split(x, w, 1)
+        x = tf.concat([tf.squeeze(x_) for x_ in x], 2)
+        x = tf.reshape(x, (N, h*r, w*r, 1))
+
+    xc = tf.split(x, n_split, 3)
+    x = tf.concat([PS(x_, r) for x_ in xc], 3)
+
+    return x
+
+def plot_SR_data(idx, LR, SR, path):
+
     for i in range(LR.shape[0]):
+        vmin0, vmax0 = np.min(SR[i,:,:,0]), np.max(SR[i,:,:,0])
+        vmin1, vmax1 = np.min(SR[i,:,:,1]), np.max(SR[i,:,:,1])
 
-        plt.figure(figsize = (8,4))
-
-        vmin_u = np.min(SR[i,:,:,0])
-        vmax_u = np.max(SR[i,:,:,0])
-        vmin_v = np.min(SR[i,:,:,1])
-        vmax_v = np.max(SR[i,:,:,1])
-
-        plt.subplot(231)
-        plt.imshow(LR[i,:,:,0], vmin = vmin_u, vmax = vmax_u, cmap = 'viridis', origin = 'lower')
-        plt.title("LR Input", fontsize = 9)
-        plt.ylabel("u", fontsize = 9)
+        plt.figure(figsize=(12, 12))
+        
+        plt.subplot(221)
+        plt.imshow(LR[i, :, :, 0], vmin=vmin0, vmax=vmax0, cmap='viridis', origin='lower')
+        plt.title('LR 0 Input', fontsize=9)
+        plt.colorbar()
+        plt.xticks([], [])
+        plt.yticks([], [])
+        
+        plt.subplot(223)
+        plt.imshow(LR[i, :, :, 1], vmin=vmin1, vmax=vmax1, cmap='viridis', origin='lower')
+        plt.title('LR 1 Input', fontsize=9)
+        plt.colorbar()
+        plt.xticks([], [])
+        plt.yticks([], [])
+        
+        plt.subplot(222)
+        plt.imshow(SR[i, :, :, 0], vmin=vmin0, vmax=vmax0, cmap='viridis', origin='lower')
+        plt.title('SR 0 Output', fontsize=9)
+        plt.colorbar()
+        plt.xticks([], [])
+        plt.yticks([], [])
+        
+        plt.subplot(224)
+        plt.imshow(SR[i, :, :, 1], vmin=vmin1, vmax=vmax1, cmap='viridis', origin='lower')
+        plt.title('SR 1 Output', fontsize=9)
+        plt.colorbar()
         plt.xticks([], [])
         plt.yticks([], [])
 
-        plt.subplot(232)
-        plt.imshow(SR[i,:,:,0], vmin = vmin_u, vmax = vmax_u, cmap = 'viridis', origin = 'lower')
-        plt.title("GANs SR", fontsize = 9)
-        plt.xticks([], [])
-        plt.yticks([], [])
-
-        plt.subplot(233)
-        plt.imshow(HR[i,:,:,0], vmin = vmin_u, vmax = vmax_u, cmap = 'viridis', origin = 'lower')
-        plt.title("Ground Truth", fontsize = 9)
-        plt.xticks([], [])
-        plt.yticks([], [])
-
-        cax2 = plt.axes([0.82, 0.52, 0.009, 0.38])
-        plt.colorbar(cax=cax2)
-        cax2.tick_params(labelsize=8)
-        cax2.set_ylabel("m/s", fontsize = 9)
-
-        plt.subplot(234)
-        plt.imshow(LR[i,:,:,1], vmin = vmin_v, vmax = vmax_v, cmap = 'viridis', origin = 'lower')
-        plt.ylabel("v", fontsize = 9)
-        plt.xticks([], [])
-        plt.yticks([], [])
-
-        plt.subplot(235)
-        plt.imshow(SR[i,:,:,1], vmin = vmin_v, vmax = vmax_v, cmap = 'viridis', origin = 'lower')
-        plt.xticks([], [])
-        plt.yticks([], [])
-
-        plt.subplot(236)
-        plt.imshow(HR[i,:,:,1], vmin = vmin_v, vmax = vmax_v, cmap = 'viridis', origin = 'lower')
-        plt.xticks([], [])
-        plt.yticks([], [])
-
-        cax = plt.axes([0.82, 0.1, 0.009, 0.38])
-        plt.colorbar(cax=cax)
-        cax.set_ylabel("m/s", labelpad = -1, fontsize = 9)
-        plt.subplots_adjust(bottom=0.1, right=0.8, top=0.9)
-
-        wspace = 0.1   # the amount of width reserved for blank space between subplots
-        hspace = 0.1
-
-        plt.subplots_adjust(wspace = wspace, hspace = hspace)
-
-        if not os.path.exists('../data_out/'):
-            os.makedirs('../data_out/')
-
-        plt.savefig('../data_out/' + file_name + "_"+str(index)+".png", bbox_inches='tight')
+        plt.savefig(path+'/img{0:08d}.png'.format(idx[i]), dpi=200, bbox_inches='tight')
+        plt.close()

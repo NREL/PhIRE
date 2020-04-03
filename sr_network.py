@@ -1,53 +1,55 @@
 ''' @author: Andrew Glaws, Karen Stengel, Ryan King
 '''
 import tensorflow as tf
-import numpy as np
-from layer import *
+from utils import *
 
-class SRGAN(object):
-    def __init__(self, x_LR=None, x_HR=None, r=None, status='pretraining', alpha_adverse=0.001):
+class SR_NETWORK(object):
+    def __init__(self, x_LR=None, x_HR=None, r=None, status='pretraining', data_type=None, alpha_advers=0.001):
 
         status = status.lower()
         if status not in ['pretraining', 'training', 'testing']:
             print('Error in network status.')
             exit()
 
-        self.x_LR = x_LR
-        if x_HR is not None:
-            self.x_HR = x_HR
+        self.x_LR, self.x_HR = x_LR, x_HR
 
         if r is None:
             print('Error in SR scaling. Variable r must be specified.')
             exit()
 
         if status in ['pretraining', 'training']:
-            self.x_SR = self.generator(self.x_LR, r=r, is_training=True)
+            self.x_SR = self.generator(self.x_LR, r=r, data_type=data_type, is_training=True)
         else:
-            self.x_SR = self.generator(self.x_LR, r=r, is_training=False)
+            self.x_SR = self.generator(self.x_LR, r=r, data_type=data_type, is_training=False)
 
         self.g_variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='generator')
 
         if status == 'pretraining':
-            self.g_loss = self.compute_losses(x_HR, self.x_SR, None, None, alpha_adverse, isGAN=False)
+            self.g_loss = self.compute_losses(self.x_HR, self.x_SR, None, None, alpha_advers, isGAN=False)
+
+            self.d_loss, self.disc_HR, self.disc_SR, self.d_variables = None, None, None, None
+            self.advers_perf, self.content_loss, self.g_advers_loss = None, None, None
 
         elif status == 'training':
-            self.disc_HR = self.discriminator(x_HR, reuse=False)
+            self.disc_HR = self.discriminator(self.x_HR, reuse=False)
             self.disc_SR = self.discriminator(self.x_SR, reuse=True)
             self.d_variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='discriminator')
 
-            loss_out = self.compute_losses(x_HR, self.x_SR, self.disc_HR, self.disc_SR, alpha_adverse, isGAN=True)
+            loss_out = self.compute_losses(self.x_HR, self.x_SR, self.disc_HR, self.disc_SR, alpha_advers, isGAN=True)
             self.g_loss = loss_out[0]
             self.d_loss = loss_out[1]
             self.advers_perf = loss_out[2]
-            self.p_loss = loss_out[3]
-            self.g_ad_loss  = loss_out[4]
+            self.content_loss = loss_out[3]
+            self.g_advers_loss  = loss_out[4]
+
         else:
+            self.g_loss, self.d_loss = None, None
+            self.disc_HR, self.disc_SR, self.d_variables = None, None, None
+            self.advers_perf, self.content_loss, self.g_advers_loss = None, None, None
             self.disc_HR, self.disc_SR, self.d_variables = None, None, None
 
-            self.g_loss, self.d_loss = None, None
 
-
-    def generator(self, x, r=None, is_training=False, reuse=False):
+    def generator(self, x, r, data_type=None, is_training=False, reuse=False):
         if is_training:
             N, h, w, C = tf.shape(x)[0], x.get_shape()[1], x.get_shape()[2], x.get_shape()[3]
         else:
@@ -99,6 +101,8 @@ class SRGAN(object):
             output_shape = [N, r_prod*h+2*k, r_prod*w+2*k, C]
             with tf.variable_scope('deconv_out'):
                 x = deconv_layer_2d(x, [k, k, C, C_in], output_shape, stride, k)
+                if data_type == 'solar':
+                    x = tf.nn.relu(x)
 
         return x
 
