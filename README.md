@@ -2,7 +2,7 @@
 
 This repository contains code for the model described in 
 
-Stengel K., Glaws A., Hettinger D., King R. "Adversarial super-resolution of climatological wind and solar data". (in review)
+Stengel K., Glaws A., Hettinger D., King R. "Adversarial super-resolution of climatological wind and solar data". PNAS July 21, 2020 117 (29) 16805-16815; first published July 6, 2020 https://doi.org/10.1073/pnas.1918964117
 
 ___
 ### Table of Contents
