@@ -1,8 +1,11 @@
 ''' @author: Andrew Glaws, Karen Stengel, Ryan King
 '''
+from __future__ import print_function
+
 import os
 import numpy as np
 import tensorflow as tf
+from itertools import count
 from time import strftime, time
 from utils import plot_SR_data
 from sr_network import SR_NETWORK
@@ -15,7 +18,7 @@ class PhIREGANs:
     DEFAULT_SAVE_EVERY = 10 # How frequently (in epochs) to save model weights
     DEFAULT_PRINT_EVERY = 2 # How frequently (in iterations) to write out performance
 
-    def __init__(self, data_type, N_epochs=None, learning_rate=None, epoch_shift=None, save_every=None, print_every=None, mu_sig=None):
+    def __init__(self, data_type, N_epochs=None, learning_rate=None, epoch_shift=None, save_every=None, print_every=None, mu_sig=None, perceptual_loss=False):
 
         self.N_epochs      = N_epochs if N_epochs is not None else self.DEFAULT_N_EPOCHS
         self.learning_rate = learning_rate if learning_rate is not None else self.DEFAULT_LEARNING_RATE
@@ -25,7 +28,9 @@ class PhIREGANs:
 
         self.data_type = data_type
         self.mu_sig = mu_sig
+        self.perceptual_loss = perceptual_loss
         self.LR_data_shape = None
+        
 
         # Set various paths for where to save data
         self.run_id        = '-'.join([self.data_type, strftime('%Y%m%d-%H%M%S')])
@@ -86,18 +91,28 @@ class PhIREGANs:
         x_LR = tf.placeholder(tf.float32, [None, h,             w,            C])
         x_HR = tf.placeholder(tf.float32, [None, h*np.prod(r),  w*np.prod(r), C])
 
-        model = SR_NETWORK(x_LR, x_HR, r=r, status='pretraining')
+        model = SR_NETWORK(x_LR, x_HR, r=r, status='pretraining', perceptual_loss=self.perceptual_loss)
 
         optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
         g_train_op = optimizer.minimize(model.g_loss, var_list= model.g_variables)
-        init = tf.global_variables_initializer()
+        init = tf.variables_initializer(model.g_variables + optimizer.variables())
+        
+
+        # Create saver and checkpoint dir
+        checkpoint_dir = '/'.join([self.model_name, 'pretraining'])
+        try:
+            os.makedirs(checkpoint_dir)
+        except OSError:
+            pass
+        checkpoint_name = checkpoint_dir + '/generator'
+        last_checkpoint = None
 
         g_saver = tf.train.Saver(var_list=model.g_variables, max_to_keep=10000)
         print('Done.')
 
         print('Building data pipeline ...', end=' ')
         ds = tf.data.TFRecordDataset(data_path)
-        ds = ds.map(lambda xx: self._parse_train_(xx, self.mu_sig)).shuffle(1000).batch(batch_size)
+        ds = ds.map(lambda xx: self._parse_train_(xx, self.mu_sig)).shuffle(1000).batch(batch_size).prefetch(5)
 
         iterator = tf.data.Iterator.from_structure(ds.output_types,
                                                    ds.output_shapes)
@@ -106,7 +121,7 @@ class PhIREGANs:
         init_iter = iterator.make_initializer(ds)
         print('Done.')
 
-        with tf.Session() as sess:
+        with tf.keras.backend.get_session() as sess:
             print('Training network ...')
 
             sess.run(init)
@@ -146,27 +161,19 @@ class PhIREGANs:
                 except tf.errors.OutOfRangeError:
                     pass
 
-                if (epoch % self.save_every) == 0:
-                    model_dir = '/'.join([self.model_name, 'cnn{0:05d}'.format(epoch)])
-                    if not os.path.exists(model_dir):
-                        os.makedirs(model_dir)
-                    saved_model = '/'.join([model_dir, 'cnn'])
-                    g_saver.save(sess, saved_model)
+                if epoch % self.save_every == 0:
+                    last_checkpoint = g_saver.save(sess, checkpoint_name, global_step=epoch)
 
                 epoch_loss = epoch_loss/N
 
                 print('Epoch generator training loss=%.5f' %(epoch_loss))
                 print('Epoch took %.2f seconds\n' %(time() - start_time), flush=True)
 
-            model_dir = '/'.join([self.model_name, 'cnn'])
-            if not os.path.exists(self.model_name):
-                os.makedirs(self.model_name)
-            saved_model = '/'.join([model_dir, 'cnn'])
-            g_saver.save(sess, saved_model)
+            if epoch % self.save_every != 0:
+                last_checkpoint = g_saver.save(sess, checkpoint_name, global_step=epoch)
 
-        print('Done.')
-
-        return saved_model
+            print('Done.')
+            return last_checkpoint
 
     def train(self, r, data_path, model_path, batch_size=100, alpha_advers=0.001):
         '''
@@ -198,12 +205,21 @@ class PhIREGANs:
         x_LR = tf.placeholder(tf.float32, [None, h,             w,            C])
         x_HR = tf.placeholder(tf.float32, [None, h*np.prod(r),  w*np.prod(r), C])
 
-        model = SR_NETWORK(x_LR, x_HR, r=r, status='training', alpha_advers=alpha_advers)
+        model = SR_NETWORK(x_LR, x_HR, r=r, status='training', alpha_advers=alpha_advers, perceptual_loss=self.perceptual_loss)
 
         optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
         g_train_op = optimizer.minimize(model.g_loss, var_list=model.g_variables)
         d_train_op = optimizer.minimize(model.d_loss, var_list=model.d_variables)
-        init = tf.global_variables_initializer()
+        init = tf.variables_initializer(model.g_variables + model.d_variables + optimizer.variables())
+
+        # Create savera and checkpoint dir
+        checkpoint_dir = '/'.join([self.model_name, 'training'])
+        try:
+            os.makedirs(checkpoint_dir)
+        except OSError:
+            pass
+        checkpoint_name = checkpoint_dir + '/gan'
+        last_checkpoint = None
 
         g_saver = tf.train.Saver(var_list=model.g_variables, max_to_keep=10000)
         gd_saver = tf.train.Saver(var_list=(model.g_variables+model.d_variables), max_to_keep=10000)
@@ -211,7 +227,7 @@ class PhIREGANs:
 
         print('Building data pipeline ...', end=' ')
         ds = tf.data.TFRecordDataset(data_path)
-        ds = ds.map(lambda xx: self._parse_train_(xx, self.mu_sig)).shuffle(1000).batch(batch_size)
+        ds = ds.map(lambda xx: self._parse_train_(xx, self.mu_sig)).shuffle(1000).batch(batch_size).prefetch(5)
 
         iterator = tf.data.Iterator.from_structure(ds.output_types,
                                                    ds.output_shapes)
@@ -220,20 +236,18 @@ class PhIREGANs:
         init_iter = iterator.make_initializer(ds)
         print('Done.')
 
-        with tf.Session() as sess:
+        with tf.keras.backend.get_session() as sess:
             print('Training network ...')
 
             sess.run(init)
 
             print('Loading previously trained network...', end=' ')
-            if 'gan-all' in model_path:
-                # Load both pretrained generator and discriminator networks
+            try:
                 gd_saver.restore(sess, model_path)
-            else:
-                # Load only pretrained generator network, start discriminator training from scratch
+                print('Done. Restored both generator & discriminator')
+            except tf.errors.NotFoundError:
                 g_saver.restore(sess, model_path)
-
-            print('Done.')
+                print('Done. Restored generator only')
 
             # Start training
             iters = 0
@@ -288,15 +302,8 @@ class PhIREGANs:
                 except tf.errors.OutOfRangeError:
                     pass
 
-                if (epoch % self.save_every) == 0:                    
-                    g_model_dir  = '/'.join([self.model_name, 'gan{0:05d}'.format(epoch)])
-                    gd_model_dir = '/'.join([self.model_name, 'gan-all{0:05d}'.format(epoch)])
-                    if not os.path.exists(self.model_name):
-                        os.makedirs(self.model_name)
-                    g_saved_model  = '/'.join([g_model_dir,  'gan'])
-                    gd_saved_model = '/'.join([gd_model_dir, 'gan'])
-                    g_saver.save(sess,  g_saved_model)
-                    gd_saver.save(sess, gd_saved_model)
+                if epoch % self.save_every == 0:                    
+                    last_checkpoint = gd_saver.save(sess, checkpoint_name, global_step=epoch)
 
                 g_loss = epoch_g_loss/N
                 d_loss = epoch_d_loss/N
@@ -304,20 +311,14 @@ class PhIREGANs:
                 print('Epoch generator training loss=%.5f, discriminator training loss=%.5f' %(g_loss, d_loss))
                 print('Epoch took %.2f seconds\n' %(time() - start_time), flush=True)
 
-            g_model_dir  ='/'.join([self.model_name, 'gan'])
-            gd_model_dir = '/'.join([self.model_name, 'gan-all'])
-            if not os.path.exists(self.model_name):
-                os.makedirs(self.model_name)
-            g_saved_model  = '/'.join([g_model_dir,  'gan'])
-            gd_saved_model = '/'.join([gd_model_dir, 'gan'])
-            g_saver.save(sess,  g_saved_model)
-            gd_saver.save(sess, gd_saved_model)
+            if epoch % self.save_every != 0:                    
+                last_checkpoint = gd_saver.save(sess, checkpoint_name, global_step=epoch)
 
         print('Done.')
+        return last_checkpoint
 
-        return g_saved_model
 
-    def test(self, r, data_path, model_path, batch_size=100, plot_data=False):
+    def test(self, r, data_path, model_path, batch_size=100, plot_data=False, save_every=1):
         '''
             This method loads a previously trained model and runs it on test data
 
@@ -340,7 +341,7 @@ class PhIREGANs:
         
         x_LR = tf.placeholder(tf.float32, [None, None, None, C])
 
-        model = SR_NETWORK(x_LR, r=r, status='testing')
+        model = SR_NETWORK(x_LR, r=r, status='testing', perceptual_loss=self.perceptual_loss)
 
         init = tf.global_variables_initializer()
         g_saver = tf.train.Saver(var_list=model.g_variables, max_to_keep=10000)
@@ -358,44 +359,45 @@ class PhIREGANs:
         init_iter = iterator.make_initializer(ds)
         print('Done.')
 
-        with tf.Session() as sess:
+        if not os.path.exists(self.data_out_path):
+                os.makedirs(self.data_out_path)
+
+        with tf.keras.backend.get_session() as sess:
             print('Loading saved network ...', end=' ')
-            sess.run(init)
+            #sess.run(init)
             g_saver.restore(sess, model_path)
             print('Done.')
+            
+            with open(self.data_out_path + '/dataSR.npy', 'wb') as out_f:            
+                print('Running test data ...')
+                sess.run(init_iter)
+                try:
+                    for i in count():
+                        batch_idx, batch_LR = sess.run([idx, LR_out])
+                        N_batch = batch_LR.shape[0]
 
-            print('Running test data ...')
-            sess.run(init_iter)
-            try:
-                data_out = None
-                while True:
+                        if i % self.print_every == 0:
+                            print('batch ', i)
 
-                    batch_idx, batch_LR = sess.run([idx, LR_out])
-                    N_batch = batch_LR.shape[0]
+                        if i % save_every != 0:
+                            continue
 
-                    feed_dict = {x_LR:batch_LR}
+                        feed_dict = {x_LR:batch_LR}
 
-                    batch_SR = sess.run(model.x_SR, feed_dict=feed_dict)
+                        batch_SR = sess.run(model.x_SR, feed_dict=feed_dict)
 
-                    batch_LR = self.mu_sig[1]*batch_LR + self.mu_sig[0]
-                    batch_SR = self.mu_sig[1]*batch_SR + self.mu_sig[0]
-                    if plot_data:
-                        img_path = '/'.join([self.data_out_path, 'imgs'])
-                        if not os.path.exists(img_path):
-                            os.makedirs(img_path)
-                        plot_SR_data(batch_idx, batch_LR, batch_SR, img_path)
+                        batch_LR = self.mu_sig[1]*batch_LR + self.mu_sig[0]
+                        batch_SR = self.mu_sig[1]*batch_SR + self.mu_sig[0]
+                        if plot_data:
+                            img_path = '/'.join([self.data_out_path, 'imgs'])
+                            if not os.path.exists(img_path):
+                                os.makedirs(img_path)
+                            plot_SR_data(batch_idx, batch_LR, batch_SR, img_path)
 
-                    if data_out is None:
-                        data_out = batch_SR
-                    else:
-                        data_out = np.concatenate((data_out, batch_SR), axis=0)
+                        np.save(out_f, batch_SR, allow_pickle=False)
 
-            except tf.errors.OutOfRangeError:
-                pass
-
-            if not os.path.exists(self.data_out_path):
-                os.makedirs(self.data_out_path)
-            np.save(self.data_out_path+'/dataSR.npy', data_out)
+                except tf.errors.OutOfRangeError:
+                    pass
 
         print('Done.')
 
@@ -429,16 +431,27 @@ class PhIREGANs:
         h_HR, w_HR = example['h_HR'], example['w_HR']
 
         c = example['c']
-
-        data_LR = tf.decode_raw(example['data_LR'], tf.float64)
-        data_HR = tf.decode_raw(example['data_HR'], tf.float64)
+  
+        data_LR = tf.decode_raw(example['data_LR'], tf.float64)  # IMPORTANT: might have to adjust dtype here
+        data_HR = tf.decode_raw(example['data_HR'], tf.float32)
 
         data_LR = tf.reshape(data_LR, (h_LR, w_LR, c))
         data_HR = tf.reshape(data_HR, (h_HR, w_HR, c))
 
+        if True:
+            u, std = [275.37314, 1.8918975e-08, 2.3000993e-07], [16.993176, 2.1903368e-05, 4.4884804e-05]
+            data_LR = (data_LR - u) / std
+            data_HR = (data_HR - u) / std
+
+            data_LR = tf.math.sign(data_LR) * tf.math.log1p(tf.math.abs(data_LR))
+            data_HR = tf.math.sign(data_HR) * tf.math.log1p(tf.math.abs(data_HR))
+
         if mu_sig is not None:
             data_LR = (data_LR - mu_sig[0])/mu_sig[1]
             data_HR = (data_HR - mu_sig[0])/mu_sig[1]
+
+        data_LR = tf.clip_by_value(data_LR, -70, 70)
+        data_HR = tf.clip_by_value(data_HR, -70, 70)
 
         return idx, data_LR, data_HR
 
@@ -469,11 +482,17 @@ class PhIREGANs:
         c = example['c']
 
         data_LR = tf.decode_raw(example['data_LR'], tf.float64)
-
         data_LR = tf.reshape(data_LR, (h_LR, w_LR, c))
+
+        if True:
+            u, std = [275.37314, 1.8918975e-08, 2.3000993e-07], [16.993176, 2.1903368e-05, 4.4884804e-05]
+            data_LR = (data_LR - u) / std
+            data_LR = tf.math.sign(data_LR) * tf.math.log1p(tf.math.abs(data_LR))
 
         if mu_sig is not None:
             data_LR = (data_LR - mu_sig[0])/mu_sig[1]
+
+        data_LR = tf.clip_by_value(data_LR, -70, 70)
 
         return idx, data_LR
 

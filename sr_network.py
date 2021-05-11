@@ -2,9 +2,10 @@
 '''
 import tensorflow as tf
 from utils import *
+from encoder import load_encoder
 
 class SR_NETWORK(object):
-    def __init__(self, x_LR=None, x_HR=None, r=None, status='pretraining', alpha_advers=0.001):
+    def __init__(self, x_LR=None, x_HR=None, r=None, status='pretraining', alpha_advers=0.001, perceptual_loss=False):
 
         status = status.lower()
         if status not in ['pretraining', 'training', 'testing']:
@@ -12,6 +13,7 @@ class SR_NETWORK(object):
             exit()
 
         self.x_LR, self.x_HR = x_LR, x_HR
+        self.perceptual_loss = perceptual_loss
 
         if r is None:
             print('Error in SR scaling. Variable r must be specified.')
@@ -47,7 +49,6 @@ class SR_NETWORK(object):
             self.disc_HR, self.disc_SR, self.d_variables = None, None, None
             self.advers_perf, self.content_loss, self.g_advers_loss = None, None, None
             self.disc_HR, self.disc_SR, self.d_variables = None, None, None
-
 
     def generator(self, x, r, is_training=False, reuse=False):
         if is_training:
@@ -153,7 +154,13 @@ class SR_NETWORK(object):
 
     def compute_losses(self, x_HR, x_SR, d_HR, d_SR, alpha_advers=0.001, isGAN=False):
         
-        content_loss = tf.reduce_mean((x_HR - x_SR)**2, axis=[1, 2, 3])
+        if self.perceptual_loss:
+            encoder = load_encoder('/data')
+            diff = encoder(x_HR, training=False) - encoder(x_SR, training=False)
+        else:
+            diff = x_HR - x_SR
+
+        content_loss = tf.reduce_mean(diff**2, axis=[1, 2, 3])
 
         if isGAN:
             g_advers_loss = tf.nn.sigmoid_cross_entropy_with_logits(logits=d_SR, labels=tf.ones_like(d_SR))

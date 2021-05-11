@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow as tf
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
 def conv_layer_2d(x, filter_shape, stride, trainable=True):
     W = tf.get_variable(
