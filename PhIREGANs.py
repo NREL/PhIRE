@@ -3,12 +3,14 @@
 from __future__ import print_function
 
 import os
+import sys
 import numpy as np
 import tensorflow as tf
 from itertools import count
 from time import strftime, time
 from utils import plot_SR_data
 from sr_network import SR_NETWORK
+
 
 class PhIREGANs:
     # Network training meta-parameters
@@ -17,6 +19,7 @@ class PhIREGANs:
     DEFAULT_EPOCH_SHIFT = 0 # If reloading previously trained network, what epoch to start at
     DEFAULT_SAVE_EVERY = 10 # How frequently (in epochs) to save model weights
     DEFAULT_PRINT_EVERY = 2 # How frequently (in iterations) to write out performance
+    N_SHUFFLE = 4000
 
     def __init__(self, data_type, N_epochs=None, learning_rate=None, epoch_shift=None, save_every=None, print_every=None, mu_sig=None, perceptual_loss=False):
 
@@ -111,18 +114,12 @@ class PhIREGANs:
         print('Done.')
 
         print('Building data pipeline ...', end=' ')
-        ds = tf.data.TFRecordDataset(data_path)
-        ds = ds.map(lambda xx: self._parse_train_(xx, self.mu_sig)).shuffle(1000).batch(batch_size).prefetch(5)
-
-        iterator = tf.data.Iterator.from_structure(ds.output_types,
-                                                   ds.output_shapes)
-        idx, LR_out, HR_out = iterator.get_next()
-
-        init_iter = iterator.make_initializer(ds)
+        idx, LR_out, HR_out, init_iter = self.make_train_ds(data_path, batch_size)
         print('Done.')
 
         with tf.keras.backend.get_session() as sess:
             print('Training network ...')
+            sys.stdout.flush()
 
             sess.run(init)
 
@@ -167,7 +164,8 @@ class PhIREGANs:
                 epoch_loss = epoch_loss/N
 
                 print('Epoch generator training loss=%.5f' %(epoch_loss))
-                print('Epoch took %.2f seconds\n' %(time() - start_time), flush=True)
+                print('Epoch took %.2f seconds\n' %(time() - start_time))
+                sys.stdout.flush()
 
             if epoch % self.save_every != 0:
                 last_checkpoint = g_saver.save(sess, checkpoint_name, global_step=epoch)
@@ -226,18 +224,12 @@ class PhIREGANs:
         print('Done.')
 
         print('Building data pipeline ...', end=' ')
-        ds = tf.data.TFRecordDataset(data_path)
-        ds = ds.map(lambda xx: self._parse_train_(xx, self.mu_sig)).shuffle(1000).batch(batch_size).prefetch(5)
-
-        iterator = tf.data.Iterator.from_structure(ds.output_types,
-                                                   ds.output_shapes)
-        idx, LR_out, HR_out = iterator.get_next()
-
-        init_iter = iterator.make_initializer(ds)
+        idx, LR_out, HR_out, init_iter = self.make_train_ds(data_path, batch_size)
         print('Done.')
 
         with tf.keras.backend.get_session() as sess:
             print('Training network ...')
+            sys.stdout.flush()
 
             sess.run(init)
 
@@ -309,7 +301,8 @@ class PhIREGANs:
                 d_loss = epoch_d_loss/N
 
                 print('Epoch generator training loss=%.5f, discriminator training loss=%.5f' %(g_loss, d_loss))
-                print('Epoch took %.2f seconds\n' %(time() - start_time), flush=True)
+                print('Epoch took %.2f seconds\n' %(time() - start_time))
+                sys.stdout.flush()
 
             if epoch % self.save_every != 0:                    
                 last_checkpoint = gd_saver.save(sess, checkpoint_name, global_step=epoch)
@@ -346,17 +339,9 @@ class PhIREGANs:
         init = tf.global_variables_initializer()
         g_saver = tf.train.Saver(var_list=model.g_variables, max_to_keep=10000)
         print('Done.')
-
+        
         print('Building data pipeline ...', end=' ')
-
-        ds = tf.data.TFRecordDataset(data_path)
-        ds = ds.map(lambda xx: self._parse_test_(xx, self.mu_sig)).batch(batch_size)
-
-        iterator = tf.data.Iterator.from_structure(ds.output_types,
-                                                   ds.output_shapes)
-        idx, LR_out = iterator.get_next()
-
-        init_iter = iterator.make_initializer(ds)
+        idx, LR_out, init_iter = self.make_test_ds(data_path, batch_size)
         print('Done.')
 
         if not os.path.exists(self.data_out_path):
@@ -432,13 +417,13 @@ class PhIREGANs:
 
         c = example['c']
   
-        data_LR = tf.decode_raw(example['data_LR'], tf.float64)  # IMPORTANT: might have to adjust dtype here
+        data_LR = tf.decode_raw(example['data_LR'], tf.float32)
         data_HR = tf.decode_raw(example['data_HR'], tf.float32)
 
         data_LR = tf.reshape(data_LR, (h_LR, w_LR, c))
         data_HR = tf.reshape(data_HR, (h_HR, w_HR, c))
 
-        if True:
+        if False:
             u, std = [275.37314, 1.8918975e-08, 2.3000993e-07], [16.993176, 2.1903368e-05, 4.4884804e-05]
             data_LR = (data_LR - u) / std
             data_HR = (data_HR - u) / std
@@ -449,9 +434,6 @@ class PhIREGANs:
         if mu_sig is not None:
             data_LR = (data_LR - mu_sig[0])/mu_sig[1]
             data_HR = (data_HR - mu_sig[0])/mu_sig[1]
-
-        data_LR = tf.clip_by_value(data_LR, -70, 70)
-        data_HR = tf.clip_by_value(data_HR, -70, 70)
 
         return idx, data_LR, data_HR
 
@@ -481,10 +463,10 @@ class PhIREGANs:
 
         c = example['c']
 
-        data_LR = tf.decode_raw(example['data_LR'], tf.float64)
+        data_LR = tf.decode_raw(example['data_LR'], tf.float32)
         data_LR = tf.reshape(data_LR, (h_LR, w_LR, c))
 
-        if True:
+        if False:
             u, std = [275.37314, 1.8918975e-08, 2.3000993e-07], [16.993176, 2.1903368e-05, 4.4884804e-05]
             data_LR = (data_LR - u) / std
             data_LR = tf.math.sign(data_LR) * tf.math.log1p(tf.math.abs(data_LR))
@@ -492,9 +474,32 @@ class PhIREGANs:
         if mu_sig is not None:
             data_LR = (data_LR - mu_sig[0])/mu_sig[1]
 
-        data_LR = tf.clip_by_value(data_LR, -70, 70)
-
         return idx, data_LR
+
+
+    def make_train_ds(self, data_path, batch_size):
+        ds = tf.data.TFRecordDataset(data_path, num_parallel_reads=4)
+        ds = ds.map(lambda xx: self._parse_train_(xx, self.mu_sig))
+        ds = ds.shuffle(self.N_SHUFFLE).batch(batch_size).prefetch(5)
+
+        iterator = tf.data.Iterator.from_structure(ds.output_types,ds.output_shapes)
+        idx, LR_out, HR_out = iterator.get_next()
+        init_iter = iterator.make_initializer(ds)
+
+        return idx, LR_out, HR_out, init_iter
+
+
+    def make_test_ds(self, data_path, batch_size):
+        ds = tf.data.TFRecordDataset(data_path, num_parallel_reads=4)
+        ds = ds.map(lambda xx: self._parse_test_(xx, self.mu_sig)).batch(batch_size)
+
+        iterator = tf.data.Iterator.from_structure(ds.output_types,
+                                                   ds.output_shapes)
+        idx, LR_out = iterator.get_next()
+        init_iter = iterator.make_initializer(ds)
+
+        return idx, LR_out, init_iter
+
 
     def set_mu_sig(self, data_path, batch_size=1):
         '''

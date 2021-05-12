@@ -155,8 +155,11 @@ class SR_NETWORK(object):
     def compute_losses(self, x_HR, x_SR, d_HR, d_SR, alpha_advers=0.001, isGAN=False):
         
         if self.perceptual_loss:
-            encoder = load_encoder('/data')
-            diff = encoder(x_HR, training=False) - encoder(x_SR, training=False)
+            encoder = load_encoder('/data/repr_models/autoencoder_2021-05-10_1756/final/')
+            r1, r2 = encoder(x_HR, training=False), encoder(x_SR, training=False)
+            r1 *= 60
+            r2 *= 60
+            diff = r1 - r2
         else:
             diff = x_HR - x_SR
 

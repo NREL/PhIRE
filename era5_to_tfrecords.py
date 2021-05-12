@@ -12,6 +12,7 @@ class Downscaler:
 
     def __init__(self, sess, factor, img_shape):
         self.sess = sess
+        self.factor = factor
         self.x_in = tf.placeholder(tf.float32, [None] + list(img_shape))
         self.pool = tf.nn.avg_pool2d(self.x_in, [1, factor, factor, 1], [1, factor, factor, 1],  padding='SAME')
 
@@ -27,41 +28,64 @@ def _int64_feature(value):
     return tf.train.Feature(int64_list=tf.train.Int64List(value=[value]))
 
 
-def generate_TFRecords(writer, data, downscaler, mode):
+def patchify(data, y, x, patch_size):
+    h,w = patch_size
+    slices = []
+    for i in range(x.shape[1]):
+        for n in range(data.shape[0]):
+            patch = data[n, y[n,i]:y[n,i]+h, x[n,i]:x[n,i]+w, ...]
+            slices.append(patch)
+    return slices
+
+
+def patchify_random(data, patch_size, n_patches=14):
+    h,w = patch_size
+
+    y = np.random.randint(0, data.shape[1] - h, size=(data.shape[0], n_patches))
+    x = np.random.randint(0, data.shape[2], size=(data.shape[0], n_patches))
+
+    data = np.pad(data, ((0,0), (0,0), (0,w), (0,0)), 'wrap')
+    patches = patchify(data, y, x, patch_size)
+    return patches, y, x
+
+
+def generate_TFRecords(writer, data, downscaler, mode, HR_patches):
     '''
     copied from utils.py and modified to allow appending
-    '''
-    if data.dtype != np.float32:
-        print('WARNING: cast to float32 induces additional overhead')
-        data = data.astype(np.float32)
+    '''    
+    assert data.dtype == np.float32
 
     if mode == 'train':
         data_LR = downscaler.downscale(data)
 
-    for j in range(data.shape[0]):
+    if HR_patches:
+        data, y, x = patchify_random(data, HR_patches)
         if mode == 'train':
-            h_HR, w_HR, c = data[j, ...].shape
-            h_LR, w_LR, c = data_LR[j, ...].shape
+            K = downscaler.factor
+            h,w = HR_patches[0] // K, HR_patches[1] // K
+            data_LR = np.pad(data_LR, ((0,0), (0,0), (0,w), (0,0)), 'wrap')
+            data_LR = patchify(data_LR, y // K, x // K, (h,w))
 
-            assert data_LR.dtype == np.float32 and data.dtype == np.float32
+    for j in range(len(data)):  # works for both lists and np.ndarays
+        if mode == 'train':
+            h_HR, w_HR, c = data[j].shape
+            h_LR, w_LR, c = data_LR[j].shape
 
             features = tf.train.Features(feature={
                                     'index': _int64_feature(j),
-                                'data_LR': _bytes_feature(data_LR[j, ...].tostring()),
+                                'data_LR': _bytes_feature(data_LR[j].tostring()),
                                     'h_LR': _int64_feature(h_LR),
                                     'w_LR': _int64_feature(w_LR),
-                                'data_HR': _bytes_feature(data[j, ...].tostring()),
+                                'data_HR': _bytes_feature(data[j].tostring()),
                                     'h_HR': _int64_feature(h_HR),
                                     'w_HR': _int64_feature(w_HR),
                                         'c': _int64_feature(c)})
         elif mode == 'test':
-            h_LR, w_LR, c = data[j, ...].shape
-
-            assert data.dtype == np.float32
+            h_LR, w_LR, c = data[j].shape
 
             features = tf.train.Features(feature={
                                     'index': _int64_feature(j),
-                                'data_LR': _bytes_feature(data[j, ...].tostring()),
+                                'data_LR': _bytes_feature(data[j].tostring()),
                                     'h_LR': _int64_feature(h_LR),
                                     'w_LR': _int64_feature(w_LR),
                                         'c': _int64_feature(c)})
@@ -74,13 +98,13 @@ def main():
     ########################################################
     
     infile = '/data2/era5/ds_train_1980_1994.hdf5'
-    outfile = '/data/stengel/stengel_train_1980_1994.{}.tfrecords'
-    n_files = 6
+    outfile = '/data/stengel/patches/patches_train_1980_1994.{}.tfrecords'
+    n_files = 8
     gzip = False
+    shuffle = True
 
     ########################################################
 
-    shuffle = True
     SR_ratio = 4
     log1p_norm = True
     z_norm = False
@@ -88,7 +112,13 @@ def main():
     mean, std = [275.28983, 1.8918675e-08, 2.3001131e-07], [16.951859, 2.19138e-05, 4.490682e-05]
     mean_log1p, std_log1p = [0.034322508, 0.01029128, 0.0031989873], [0.6344424, 0.53678083, 0.54819226]
 
+    ################### #####################################
+
+    HR_reduce_latitude = 32  # 11.25 deg from each pole
+    HR_patches = (96, 96)
+
     ########################################################
+
 
     f = h5py.File(infile, 'r', rdcc_nbytes=1000*1000*1000)
     data = da.from_array(f['data'], chunks=(16 if shuffle else 256, -1, -1, -1))
@@ -129,7 +159,11 @@ def main():
 
     # Create session and start writing
     with tf.Session() as sess:
-        downscaler = Downscaler(sess, SR_ratio, data.shape[1:])
+        if HR_reduce_latitude:
+            H,W,C = data.shape[1:]
+            downscaler = Downscaler(sess, SR_ratio, (H-HR_reduce_latitude, W, C))
+        else:
+            downscaler = Downscaler(sess, SR_ratio, data.shape[1:])
 
         file_blocks = np.array_split(block_indices, n_files)
         i = 0
@@ -145,9 +179,13 @@ def main():
                     if shuffle:
                         block = np.random.permutation(block)
 
-                    generate_TFRecords(writer, block, downscaler, 'train')
+                    if HR_reduce_latitude:
+                        lat_start = HR_reduce_latitude//2
+                        block = block[:, lat_start:(-lat_start),:, :]
+
+                    generate_TFRecords(writer, block, downscaler, 'train', HR_patches)
                     i += 1
-                    print('{} / {}'.format(i+1, data.numblocks[0]))
+                    print('{} / {}'.format(i, data.numblocks[0]))
 
 if __name__ == '__main__':
     main()

@@ -11,7 +11,9 @@ def load_encoder(path):
     encoder_org.load_weights(path + '/encoder_weights.hdf5')
     
     #encoder = tf.keras.Model(encoder_org.input, encoder_org.layers[-2].output, trainable=False)
-    encoder = tf.keras.Model(encoder_org.input, encoder_org.layers[-1].output, trainable=False)
-    encoder.summary()
+    #encoder = tf.keras.Model(encoder_org.input, encoder_org.layers[-1].output, trainable=False)
+    #encoder.summary()
 
-    return encoder
+    encoder_org.summary()
+
+    return encoder_org
