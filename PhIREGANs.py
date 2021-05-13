@@ -311,7 +311,7 @@ class PhIREGANs:
         return last_checkpoint
 
 
-    def test(self, r, data_path, model_path, batch_size=100, plot_data=False, save_every=1):
+    def test(self, r, data_path, model_path, batch_size=100, plot_data=False, save_every=1, return_batches=False, return_hr=False):
         '''
             This method loads a previously trained model and runs it on test data
 
@@ -331,17 +331,16 @@ class PhIREGANs:
         h, w, C = self.LR_data_shape
 
         print('Initializing network ...', end=' ')
-        
         x_LR = tf.placeholder(tf.float32, [None, None, None, C])
-
         model = SR_NETWORK(x_LR, r=r, status='testing', perceptual_loss=self.perceptual_loss)
-
-        init = tf.global_variables_initializer()
         g_saver = tf.train.Saver(var_list=model.g_variables, max_to_keep=10000)
         print('Done.')
         
         print('Building data pipeline ...', end=' ')
-        idx, LR_out, init_iter = self.make_test_ds(data_path, batch_size)
+        if return_hr:
+            idx, LR_out, HR_out, init_iter = self.make_train_ds(data_path, batch_size, shuffle=False)
+        else:
+            idx, LR_out, init_iter = self.make_test_ds(data_path, batch_size)
         print('Done.')
 
         if not os.path.exists(self.data_out_path):
@@ -349,7 +348,6 @@ class PhIREGANs:
 
         with tf.keras.backend.get_session() as sess:
             print('Loading saved network ...', end=' ')
-            #sess.run(init)
             g_saver.restore(sess, model_path)
             print('Done.')
             
@@ -358,11 +356,15 @@ class PhIREGANs:
                 sess.run(init_iter)
                 try:
                     for i in count():
-                        batch_idx, batch_LR = sess.run([idx, LR_out])
+                        if return_hr:
+                            batch_idx, batch_LR, batch_HR = sess.run([idx, LR_out, HR_out])
+                        else:
+                            batch_idx, batch_LR = sess.run([idx, LR_out])
                         N_batch = batch_LR.shape[0]
 
                         if i % self.print_every == 0:
                             print('batch ', i)
+                            sys.stdout.flush()
 
                         if i % save_every != 0:
                             continue
@@ -373,13 +375,20 @@ class PhIREGANs:
 
                         batch_LR = self.mu_sig[1]*batch_LR + self.mu_sig[0]
                         batch_SR = self.mu_sig[1]*batch_SR + self.mu_sig[0]
+                        
                         if plot_data:
                             img_path = '/'.join([self.data_out_path, 'imgs'])
                             if not os.path.exists(img_path):
                                 os.makedirs(img_path)
                             plot_SR_data(batch_idx, batch_LR, batch_SR, img_path)
 
-                        np.save(out_f, batch_SR, allow_pickle=False)
+                        if return_batches and return_hr:
+                            batch_HR = self.mu_sig[1]*batch_HR + self.mu_sig[0]
+                            yield batch_LR, batch_SR, batch_HR
+                        elif return_batches:
+                            yield batch_LR, batch_SR
+                        else:
+                            np.save(out_f, batch_SR, allow_pickle=False)
 
                 except tf.errors.OutOfRangeError:
                     pass
@@ -477,10 +486,14 @@ class PhIREGANs:
         return idx, data_LR
 
 
-    def make_train_ds(self, data_path, batch_size):
+    def make_train_ds(self, data_path, batch_size, shuffle=True):
         ds = tf.data.TFRecordDataset(data_path, num_parallel_reads=4)
         ds = ds.map(lambda xx: self._parse_train_(xx, self.mu_sig))
-        ds = ds.shuffle(self.N_SHUFFLE).batch(batch_size).prefetch(5)
+
+        if shuffle:
+            ds = ds.shuffle(self.N_SHUFFLE)
+
+        ds = ds.batch(batch_size).prefetch(5)
 
         iterator = tf.data.Iterator.from_structure(ds.output_types,ds.output_shapes)
         idx, LR_out, HR_out = iterator.get_next()
