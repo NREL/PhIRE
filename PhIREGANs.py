@@ -21,7 +21,7 @@ class PhIREGANs:
     DEFAULT_PRINT_EVERY = 2 # How frequently (in iterations) to write out performance
     N_SHUFFLE = 4000
 
-    def __init__(self, data_type, N_epochs=None, learning_rate=None, epoch_shift=None, save_every=None, print_every=None, mu_sig=None, perceptual_loss=False):
+    def __init__(self, data_type, N_epochs=None, learning_rate=None, epoch_shift=None, save_every=None, print_every=None, mu_sig=None, alpha_content=1.0, encoder=None):
 
         self.N_epochs      = N_epochs if N_epochs is not None else self.DEFAULT_N_EPOCHS
         self.learning_rate = learning_rate if learning_rate is not None else self.DEFAULT_LEARNING_RATE
@@ -31,9 +31,10 @@ class PhIREGANs:
 
         self.data_type = data_type
         self.mu_sig = mu_sig
-        self.perceptual_loss = perceptual_loss
         self.LR_data_shape = None
-        
+
+        self.alpha_content = alpha_content
+        self.encoder = encoder
 
         # Set various paths for where to save data
         self.run_id        = '-'.join([self.data_type, strftime('%Y%m%d-%H%M%S')])
@@ -94,7 +95,7 @@ class PhIREGANs:
         x_LR = tf.placeholder(tf.float32, [None, h,             w,            C])
         x_HR = tf.placeholder(tf.float32, [None, h*np.prod(r),  w*np.prod(r), C])
 
-        model = SR_NETWORK(x_LR, x_HR, r=r, status='pretraining', perceptual_loss=self.perceptual_loss)
+        model = SR_NETWORK(x_LR, x_HR, r=r, status='pretraining', alpha_content=self.alpha_content, encoder=self.encoder)
 
         optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
         g_train_op = optimizer.minimize(model.g_loss, var_list= model.g_variables)
@@ -203,7 +204,7 @@ class PhIREGANs:
         x_LR = tf.placeholder(tf.float32, [None, h,             w,            C])
         x_HR = tf.placeholder(tf.float32, [None, h*np.prod(r),  w*np.prod(r), C])
 
-        model = SR_NETWORK(x_LR, x_HR, r=r, status='training', alpha_advers=alpha_advers, perceptual_loss=self.perceptual_loss)
+        model = SR_NETWORK(x_LR, x_HR, r=r, status='training', alpha_advers=alpha_advers, alpha_content=self.alpha_content, encoder=self.encoder)
 
         optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
         g_train_op = optimizer.minimize(model.g_loss, var_list=model.g_variables)
@@ -332,7 +333,7 @@ class PhIREGANs:
 
         print('Initializing network ...', end=' ')
         x_LR = tf.placeholder(tf.float32, [None, None, None, C])
-        model = SR_NETWORK(x_LR, r=r, status='testing', perceptual_loss=self.perceptual_loss)
+        model = SR_NETWORK(x_LR, r=r, status='testing', alpha_content=self.alpha_content, encoder=self.encoder)
         g_saver = tf.train.Saver(var_list=model.g_variables, max_to_keep=10000)
         print('Done.')
         

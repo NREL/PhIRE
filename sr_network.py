@@ -5,7 +5,7 @@ from utils import *
 from encoder import load_encoder
 
 class SR_NETWORK(object):
-    def __init__(self, x_LR=None, x_HR=None, r=None, status='pretraining', alpha_advers=0.001, perceptual_loss=False):
+    def __init__(self, x_LR=None, x_HR=None, r=None, status='pretraining', alpha_advers=0.001, alpha_content=1.0, encoder=None):
 
         status = status.lower()
         if status not in ['pretraining', 'training', 'testing']:
@@ -13,7 +13,14 @@ class SR_NETWORK(object):
             exit()
 
         self.x_LR, self.x_HR = x_LR, x_HR
-        self.perceptual_loss = perceptual_loss
+        self.alpha_advers = alpha_advers
+        self.alpha_content = alpha_content
+
+        if encoder:
+            self.encoder = encoder()
+        else:
+            self.encoder = None
+        
 
         if r is None:
             print('Error in SR scaling. Variable r must be specified.')
@@ -27,7 +34,7 @@ class SR_NETWORK(object):
         self.g_variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='generator')
 
         if status == 'pretraining':
-            self.g_loss = self.compute_losses(self.x_HR, self.x_SR, None, None, alpha_advers, isGAN=False)
+            self.g_loss = self.compute_losses(self.x_HR, self.x_SR, None, None, isGAN=False)
 
             self.d_loss, self.disc_HR, self.disc_SR, self.d_variables = None, None, None, None
             self.advers_perf, self.content_loss, self.g_advers_loss = None, None, None
@@ -37,7 +44,7 @@ class SR_NETWORK(object):
             self.disc_SR = self.discriminator(self.x_SR, reuse=True)
             self.d_variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='discriminator')
 
-            loss_out = self.compute_losses(self.x_HR, self.x_SR, self.disc_HR, self.disc_SR, alpha_advers, isGAN=True)
+            loss_out = self.compute_losses(self.x_HR, self.x_SR, self.disc_HR, self.disc_SR, isGAN=True)
             self.g_loss = loss_out[0]
             self.d_loss = loss_out[1]
             self.advers_perf = loss_out[2]
@@ -64,6 +71,7 @@ class SR_NETWORK(object):
                 C_in, C_out = C, 64
                 output_shape[-1] = C_out
                 x = deconv_layer_2d(x, [k, k, C_out, C_in], output_shape, stride, k)
+                #x = conv_layer_2d(x, [k, k, C_in, C_out], stride, k)
                 x = tf.nn.relu(x)
 
             skip_connection = x
@@ -76,15 +84,18 @@ class SR_NETWORK(object):
 
                 with tf.variable_scope('block_{}a'.format(i+1)):
                     x = deconv_layer_2d(x, [k, k, C_out, C_in], output_shape, stride, k)
+                    #x = conv_layer_2d(x, [k, k, C_in, C_out], stride, k)
                     x = tf.nn.relu(x)
 
                 with tf.variable_scope('block_{}b'.format(i+1)):
                     x = deconv_layer_2d(x, [k, k, C_out, C_in], output_shape, stride, k)
+                    #x = conv_layer_2d(x, [k, k, C_in, C_out], stride, k)
 
                 x = tf.add(x, B_skip_connection)
 
             with tf.variable_scope('deconv2'):
                 x = deconv_layer_2d(x, [k, k, C_out, C_in], output_shape, stride, k)
+                #x = conv_layer_2d(x, [k, k, C_in, C_out], stride, k)
                 x = tf.add(x, skip_connection)
 
             # Super resolution scaling
@@ -102,6 +113,7 @@ class SR_NETWORK(object):
             output_shape = [N, r_prod*h+2*k, r_prod*w+2*k, C]
             with tf.variable_scope('deconv_out'):
                 x = deconv_layer_2d(x, [k, k, C, C_in], output_shape, stride, k)
+                #x = conv_layer_2d(x, [k, k, C_in, C], stride, k)
 
         return x
 
@@ -154,16 +166,13 @@ class SR_NETWORK(object):
 
     def compute_losses(self, x_HR, x_SR, d_HR, d_SR, alpha_advers=0.001, isGAN=False):
         
-        if self.perceptual_loss:
-            encoder = load_encoder('/data/repr_models/autoencoder_2021-05-10_1756/final/')
-            r1, r2 = encoder(x_HR, training=False), encoder(x_SR, training=False)
-            r1 *= 60
-            r2 *= 60
+        if self.encoder is not None:
+            r1, r2 = self.encoder(x_HR, training=False), self.encoder(x_SR, training=False)
             diff = r1 - r2
         else:
             diff = x_HR - x_SR
 
-        content_loss = tf.reduce_mean(diff**2, axis=[1, 2, 3])
+        content_loss = tf.reduce_mean(diff**2, axis=[1, 2, 3]) 
 
         if isGAN:
             g_advers_loss = tf.nn.sigmoid_cross_entropy_with_logits(logits=d_SR, labels=tf.ones_like(d_SR))
@@ -176,10 +185,10 @@ class SR_NETWORK(object):
                            tf.reduce_mean(tf.cast(tf.sigmoid(d_SR) > 0.5, tf.float32)), # % false positive
                            tf.reduce_mean(tf.cast(tf.sigmoid(d_HR) < 0.5, tf.float32))] # % false negative
 
-            g_loss = tf.reduce_mean(content_loss) + alpha_advers*tf.reduce_mean(g_advers_loss)
+            g_loss = self.alpha_content*tf.reduce_mean(content_loss) + self.alpha_advers*tf.reduce_mean(g_advers_loss)
             d_loss = tf.reduce_mean(d_advers_loss)
 
             return g_loss, d_loss, advers_perf, content_loss, g_advers_loss
         else:
-            return tf.reduce_mean(content_loss)
+            return self.alpha_content*tf.reduce_mean(content_loss)
     
