@@ -241,6 +241,7 @@ class PhIREGANs:
             except tf.errors.NotFoundError:
                 g_saver.restore(sess, model_path)
                 print('Done. Restored generator only')
+            sys.stdout.flush()
 
             # Start training
             iters = 0
@@ -291,6 +292,7 @@ class PhIREGANs:
                             print('D loss=%.5f' %(dl))
                             print('TP=%.5f, TN=%.5f, FP=%.5f, FN=%.5f' %(p[0], p[1], p[2], p[3]))
                             print('')
+                            sys.stdout.flush()
 
                 except tf.errors.OutOfRangeError:
                     pass
