@@ -26,13 +26,13 @@ def plot(img_LR, img_SR, img_HR, W,H, patch=None, log1p_denorm=False, cmap=None)
     plt.figure(figsize=(W*3, H*n_channels))
     for C in range(n_channels):
         plt.subplot(3,n_channels, 1 + C)
-        plt.imshow(img_LR[...,C], vmin=min_[C], vmax=max_[C], cmap=cmap)
+        plt.imshow(img_LR[...,C], vmin=min_[C], vmax=max_[C], cmap=cmap, interpolation=None)
 
         plt.subplot(3,n_channels, 1 + n_channels + C)
-        plt.imshow(img_SR[...,C], vmin=min_[C], vmax=max_[C], cmap=cmap)
+        plt.imshow(img_SR[...,C], vmin=min_[C], vmax=max_[C], cmap=cmap, interpolation=None)
 
         plt.subplot(3,n_channels, 1 + 2*n_channels + C)
-        plt.imshow(img_HR[...,C], vmin=min_[C], vmax=max_[C], cmap=cmap)
+        plt.imshow(img_HR[...,C], vmin=min_[C], vmax=max_[C], cmap=cmap, interpolation=None)
 
     return img_LR, img_SR, img_HR
 
@@ -57,11 +57,11 @@ def plot_dataset(gan, r, dataset, checkpoint, outdir, W,H, patch=None, log1p_den
 
 def main():
     
-    name = 'stacked-3days-1,4-gan'
+    name = 'resnet'
     dataset = sorted(glob('/data2/stengel/whole_images/stengel_eval_1995_1999.*.tfrecords'))
     
-    checkpoint = 'models/stacked-3days-1,4-20210516-142950/training/gan'
-    epochs = range(17, 31, 1)
+    checkpoint = 'models/resnet-20210525-114614/pretraining/generator'
+    epochs = range(5, 1, -1)
 
     if False:
         W,H = 7, 4
@@ -96,7 +96,7 @@ def main():
     for i, img in enumerate(images):
         for C in range(n_channels):
             plt.subplot(len(images),n_channels, i*n_channels + C + 1)
-            plt.imshow(img[...,C], vmin=min_[C], vmax=max_[C], cmap=cmap)
+            plt.imshow(img[...,C], vmin=min_[C], vmax=max_[C], cmap=cmap, interpolation=None)
 
     plt.savefig(figure_dir + '/progression.png')
 

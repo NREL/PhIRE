@@ -1,8 +1,8 @@
 ''' @author: Andrew Glaws, Karen Stengel, Ryan King
 '''
 import tensorflow as tf
-from utils import *
-from encoder import load_encoder
+from layers import *
+
 
 class SR_NETWORK(object):
     def __init__(self, x_LR=None, x_HR=None, r=None, status='pretraining', alpha_advers=0.001, alpha_content=1.0, encoder=None):
@@ -67,12 +67,11 @@ class SR_NETWORK(object):
         output_shape = [N, h+2*k, w+2*k, -1]
 
         with tf.variable_scope('generator', reuse=reuse):
-            with tf.variable_scope('deconv1'):
+            with tf.variable_scope('in_conv'):
                 C_in, C_out = C, 64
                 output_shape[-1] = C_out
-                x = deconv_layer_2d(x, [k, k, C_out, C_in], output_shape, stride, k)
-                #x = conv_layer_2d(x, [k, k, C_in, C_out], stride, k)
-                x = tf.nn.relu(x)
+                x = conv_layer_2d(x, [9, 9, C_in, C_out], stride, k)
+                x = tf.nn.leaky_relu(x)
 
             skip_connection = x
 
@@ -83,37 +82,46 @@ class SR_NETWORK(object):
                 B_skip_connection = x
 
                 with tf.variable_scope('block_{}a'.format(i+1)):
-                    x = deconv_layer_2d(x, [k, k, C_out, C_in], output_shape, stride, k)
-                    #x = conv_layer_2d(x, [k, k, C_in, C_out], stride, k)
-                    x = tf.nn.relu(x)
+                    x = conv_layer_2d(x, [k, k, C_in, C_out], stride)
+                    #x = bn_layer(x)
+                    x = tf.nn.leaky_relu(x)
 
                 with tf.variable_scope('block_{}b'.format(i+1)):
-                    x = deconv_layer_2d(x, [k, k, C_out, C_in], output_shape, stride, k)
-                    #x = conv_layer_2d(x, [k, k, C_in, C_out], stride, k)
+                    x = conv_layer_2d(x, [k, k, C_in, C_out], stride)
+                    #x = bn_layer(x)
 
                 x = tf.add(x, B_skip_connection)
 
-            with tf.variable_scope('deconv2'):
-                x = deconv_layer_2d(x, [k, k, C_out, C_in], output_shape, stride, k)
-                #x = conv_layer_2d(x, [k, k, C_in, C_out], stride, k)
+            with tf.variable_scope('mid_conv'):
+                x = conv_layer_2d(x, [k, k, C_in, C_out], stride)
+                #x = bn_layer(x)
                 x = tf.add(x, skip_connection)
 
+            """
             # Super resolution scaling
             r_prod = 1
             for i, r_i in enumerate(r):
                 C_out = (r_i**2)*C_in
-                with tf.variable_scope('deconv{}'.format(i+3)):
+                with tf.variable_scope('subpixel_conv{}'.format(i+1)):
                     output_shape = [N, r_prod*h+2*k, r_prod*w+2*k, C_out]
-                    x = deconv_layer_2d(x, [k, k, C_out, C_in], output_shape, stride, k)
+                    x = conv_layer_2d(x, [k,k,C_in,C_out], stride)
                     x = tf.depth_to_space(x, r_i)
-                    x = tf.nn.relu(x)
+                    x = tf.nn.leaky_relu(x)
 
                 r_prod *= r_i
+            """
+            with tf.variable_scope('upsample1'):
+                #x = bilinear_conv_layer(x, 2, trainable=False)
+                H,W= tf.shape(x)[1], tf.shape(x)[2]
+                x = tf.image.resize_images(x, (2*H,2*W))
 
-            output_shape = [N, r_prod*h+2*k, r_prod*w+2*k, C]
-            with tf.variable_scope('deconv_out'):
-                x = deconv_layer_2d(x, [k, k, C, C_in], output_shape, stride, k)
-                #x = conv_layer_2d(x, [k, k, C_in, C], stride, k)
+            with tf.variable_scope('upsample2'):
+                #x = bilinear_conv_layer(x, 2, trainable=False)
+                H,W= tf.shape(x)[1], tf.shape(x)[2]
+                x = tf.image.resize_images(x, (2*H,2*W))
+
+            with tf.variable_scope('out_conv'):
+                x = conv_layer_2d(x, [9, 9, C_in, C], stride)
 
         return x
 
@@ -172,7 +180,13 @@ class SR_NETWORK(object):
         else:
             diff = x_HR - x_SR
 
-        content_loss = tf.reduce_mean(diff**2, axis=[1, 2, 3]) 
+        beta = 1.5
+        alpha_tv = 0#5e-3
+        img_grad_y_l2_sqr = tf.math.squared_difference(x_SR[:, 1:, :-1, :], x_SR[:,:-1,:-1,:])
+        img_grad_x_l2_sqr = tf.math.squared_difference(x_SR[:, :-1, 1:, :], x_SR[:,:-1,:-1,:])
+        tv_reg = tf.math.reduce_mean((img_grad_y_l2_sqr + img_grad_x_l2_sqr)**(beta/2), axis=[1,2,3])
+
+        content_loss = tf.reduce_mean(diff**2, axis=[1, 2, 3])
 
         if isGAN:
             g_advers_loss = tf.nn.sigmoid_cross_entropy_with_logits(logits=d_SR, labels=tf.ones_like(d_SR))
@@ -185,10 +199,10 @@ class SR_NETWORK(object):
                            tf.reduce_mean(tf.cast(tf.sigmoid(d_SR) > 0.5, tf.float32)), # % false positive
                            tf.reduce_mean(tf.cast(tf.sigmoid(d_HR) < 0.5, tf.float32))] # % false negative
 
-            g_loss = self.alpha_content*tf.reduce_mean(content_loss) + self.alpha_advers*tf.reduce_mean(g_advers_loss)
+            g_loss = self.alpha_content*tf.reduce_mean(content_loss) + self.alpha_advers*tf.reduce_mean(g_advers_loss) + alpha_tv*tf.reduce_mean(tv_reg)
             d_loss = tf.reduce_mean(d_advers_loss)
 
             return g_loss, d_loss, advers_perf, content_loss, g_advers_loss
         else:
-            return self.alpha_content*tf.reduce_mean(content_loss)
+            return self.alpha_content*tf.reduce_mean(content_loss) + alpha_tv*tf.reduce_mean(tv_reg)
     
