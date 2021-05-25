@@ -83,18 +83,18 @@ class SR_NETWORK(object):
 
                 with tf.variable_scope('block_{}a'.format(i+1)):
                     x = conv_layer_2d(x, [k, k, C_in, C_out], stride)
-                    #x = bn_layer(x)
+                    x = bn_layer(x, trainable=is_training)
                     x = tf.nn.leaky_relu(x)
 
                 with tf.variable_scope('block_{}b'.format(i+1)):
                     x = conv_layer_2d(x, [k, k, C_in, C_out], stride)
-                    #x = bn_layer(x)
+                    x = bn_layer(x, trainable=is_training)
 
                 x = tf.add(x, B_skip_connection)
 
             with tf.variable_scope('mid_conv'):
                 x = conv_layer_2d(x, [k, k, C_in, C_out], stride)
-                #x = bn_layer(x)
+                x = bn_layer(x, trainable=is_training)
                 x = tf.add(x, skip_connection)
 
             """

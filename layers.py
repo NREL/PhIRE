@@ -136,7 +136,7 @@ def bilinear_conv_layer(x, factor, trainable=True):
     return y
 
 
-def bn_layer(x, trainable=True):
+def bn_layer(x, momentum=0.99, trainable=True):
     C = x.shape[-1]
 
     offset = tf.get_variable(
@@ -155,5 +155,31 @@ def bn_layer(x, trainable=True):
         trainable=trainable
     )
 
+    rolling_mean = tf.get_variable(
+        name='rolling_mean',
+        shape=[C],
+        dtype=tf.float32,
+        initializer=tf.constant_initializer(0.0),
+        trainable=trainable
+    )
+    rolling_var = tf.get_variable(
+        name='rolling_var',
+        shape=[C],
+        dtype=tf.float32,
+        initializer=tf.constant_initializer(1.0),
+        trainable=trainable
+    )
+
     mean, variance = tf.nn.moments(x, axes=[0,1,2])
-    return tf.nn.batch_normalization(x, mean, variance, offset, scale, 0.001)
+
+    if trainable:
+        update_mean = rolling_mean.assign(momentum*rolling_mean + (1-momentum)*mean, read_value=False)
+        update_var = rolling_var.assign(momentum*rolling_var + (1-momentum)*variance, read_value=False)
+    
+        with tf.control_dependencies([update_mean, update_var]):
+            y = tf.nn.batch_normalization(x, mean, variance, offset, scale, 0.001)
+
+    else:
+        y = tf.nn.batch_normalization(x, rolling_mean, rolling_var, offset, scale, 0.001)
+
+    return y
