@@ -155,6 +155,7 @@ class PhIREGANs:
                         iters += 1
                         if (iters % self.print_every) == 0:
                             print('Iteration=%d, G loss=%.5f' %(iters, gl))
+                            sys.stdout.flush()
 
                 except tf.errors.OutOfRangeError:
                     pass
