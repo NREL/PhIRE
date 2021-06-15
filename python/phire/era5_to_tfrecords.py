@@ -4,25 +4,8 @@ import hdf5plugin
 import dask.array as da
 import numpy as np
 
+from .utils import _bytes_feature, _int64_feature
 from dask.diagnostics import ProgressBar
-
-
-class Downscaler:
-
-    def __init__(self, factor, img_shape):
-        self.factor = factor
-
-    @tf.function
-    def downscale(self, x):
-        return tf.nn.avg_pool2d(x, [1, self.factor, self.factor, 1], [1, self.factor, self.factor, 1],  padding='SAME')
-
-
-def _bytes_feature(value):
-    return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
-
-
-def _int64_feature(value):
-    return tf.train.Feature(int64_list=tf.train.Int64List(value=[value]))
 
 
 def patchify(data, y, x, patch_size):
@@ -46,19 +29,18 @@ def patchify_random(data, patch_size, n_patches):
     return patches, y, x
 
 
-def generate_TFRecords(writer, data, downscaler, mode, HR_patches, n_patches):
+def generate_TFRecords(writer, data, K, mode, HR_patches, n_patches):
     '''
     copied from utils.py and modified to allow appending
     '''    
     assert data.dtype == np.float32
 
     if mode == 'train':
-        data_LR = downscaler.downscale(data)
+        data_LR = tf.nn.avg_pool2d(data, [1, K, K, 1], [1, K, K, 1],  padding='SAME')
 
     if HR_patches:
         data, y, x = patchify_random(data, HR_patches, n_patches)
         if mode == 'train':
-            K = downscaler.factor
             h,w = HR_patches[0] // K, HR_patches[1] // K
             data_LR = np.pad(data_LR, ((0,0), (0,0), (0,w), (0,0)), 'wrap')
             data_LR = patchify(data_LR, y // K, x // K, (h,w))
@@ -157,13 +139,6 @@ def main():
         block_indices = np.arange(data.numblocks[0])
 
 
-    # Create session and start writing
-    if HR_reduce_latitude:
-        H,W,C = data.shape[1:]
-        downscaler = Downscaler(SR_ratio, (H-HR_reduce_latitude, W, C))
-    else:
-        downscaler = Downscaler(SR_ratio, data.shape[1:])
-
     file_blocks = np.array_split(block_indices, n_files)
     i = 0
     for n, indices in enumerate(file_blocks):
@@ -182,7 +157,7 @@ def main():
                     lat_start = HR_reduce_latitude//2
                     block = block[:, lat_start:(-lat_start),:, :]
 
-                generate_TFRecords(writer, block, downscaler, 'train', HR_patches, n_patches)
+                generate_TFRecords(writer, block, SR_ratio, 'train', HR_patches, n_patches)
                 i += 1
                 print('{} / {}'.format(i, data.numblocks[0]))
 
