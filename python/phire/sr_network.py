@@ -83,22 +83,22 @@ class SR_NETWORK(object):
 
                 with tf.variable_scope('block_{}a'.format(i+1)):
                     x = conv_layer_2d(x, [k, k, C_in, C_out], stride)
-                    x = bn_layer(x, trainable=is_training)
+                    #x = bn_layer(x, trainable=is_training)
                     x = tf.nn.leaky_relu(x)
 
                 with tf.variable_scope('block_{}b'.format(i+1)):
                     x = conv_layer_2d(x, [k, k, C_in, C_out], stride)
-                    x = bn_layer(x, trainable=is_training)
+                    #x = bn_layer(x, trainable=is_training)
 
                 x = tf.add(x, B_skip_connection)
 
             with tf.variable_scope('mid_conv'):
                 x = conv_layer_2d(x, [k, k, C_in, C_out], stride)
-                x = bn_layer(x, trainable=is_training)
+                #x = bn_layer(x, trainable=is_training)
                 x = tf.add(x, skip_connection)
 
-            """
-            # Super resolution scaling
+            
+            # sub-pixel convolutions with PixelShuffle
             r_prod = 1
             for i, r_i in enumerate(r):
                 C_out = (r_i**2)*C_in
@@ -119,6 +119,7 @@ class SR_NETWORK(object):
                 #x = bilinear_conv_layer(x, 2, trainable=False)
                 H,W= tf.shape(x)[1], tf.shape(x)[2]
                 x = tf.image.resize_images(x, (2*H,2*W))
+            """
 
             with tf.variable_scope('out_conv'):
                 x = conv_layer_2d(x, [9, 9, C_in, C], stride)
@@ -199,10 +200,10 @@ class SR_NETWORK(object):
                            tf.reduce_mean(tf.cast(tf.sigmoid(d_SR) > 0.5, tf.float32)), # % false positive
                            tf.reduce_mean(tf.cast(tf.sigmoid(d_HR) < 0.5, tf.float32))] # % false negative
 
-            g_loss = self.alpha_content*tf.reduce_mean(content_loss) + self.alpha_advers*tf.reduce_mean(g_advers_loss) + alpha_tv*tf.reduce_mean(tv_reg)
+            g_loss = self.alpha_content*tf.reduce_mean(content_loss) + self.alpha_advers*tf.reduce_mean(g_advers_loss) #+ alpha_tv*tf.reduce_mean(tv_reg)
             d_loss = tf.reduce_mean(d_advers_loss)
 
             return g_loss, d_loss, advers_perf, content_loss, g_advers_loss
         else:
-            return self.alpha_content*tf.reduce_mean(content_loss) + alpha_tv*tf.reduce_mean(tv_reg)
+            return self.alpha_content*tf.reduce_mean(content_loss) #+ alpha_tv*tf.reduce_mean(tv_reg)
     
