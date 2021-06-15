@@ -1,7 +1,8 @@
 from setuptools import setup, find_packages
 
 console_scripts = [
-    'rplearn-data=phire.rplearn.data_tool:main'
+    'rplearn-data=phire.rplearn.data_tool:main',
+    'rplearn-train=phire.rplearn.train:main'
 ]
 
 packages = find_packages('python')

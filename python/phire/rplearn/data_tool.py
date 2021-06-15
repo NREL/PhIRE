@@ -129,8 +129,10 @@ class DataSampler:
                 'patch1': _bytes_feature(patch1.tobytes()),
                 'patch2': _bytes_feature(patch2.tobytes()),
                 'label': _int64_feature(label),
-                'H': _int64_feature(self.patch_size[0]),
-                'W': _int64_feature(self.patch_size[1]),
+                'T_max': _int64_feature(self.T_max),
+                'H': _int64_feature(patch1.shape[0]),
+                'W': _int64_feature(patch1.shape[1]),
+                'C': _int64_feature(patch1.shape[2]),
                 'lat_start': _float_feature(lat_start),
                 'long_start': _float_feature(long_start),
                 'lat_end': _float_feature(lat_end),
@@ -181,6 +183,26 @@ class DataSampler:
         C = ds.shape[0]
         channels = tuple(ds[c, idx, h, w] for c in range(C))
         return np.stack(channels, axis=-1)
+
+
+def parse_samples(serialized):
+    feature = {
+        'index': tf.FixedLenFeature([], tf.int64),
+        'patch1': tf.FixedLenFeature([], tf.string),
+        'patch2': tf.FixedLenFeature([], tf.string),
+        'label': tf.FixedLenFeature([], tf.int64),
+        'T_max': tf.FixedLenFeature([], tf.int64),
+        'H': tf.FixedLenFeature([], tf.int64),
+        'W': tf.FixedLenFeature([], tf.int64),
+        'C': tf.FixedLenFeature([], tf.int64),
+        'lat_start': tf.FixedLenFeature([], tf.float64),
+        'long_start': tf.FixedLenFeature([], tf.float64),
+        'lat_end': tf.FixedLenFeature([], tf.float64),
+        'long_end': tf.FixedLenFeature([], tf.float64)
+    }
+    
+    examples = tf.parse_example(serialized, feature)
+    return examples
 
 
 def main():
