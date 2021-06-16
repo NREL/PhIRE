@@ -21,13 +21,14 @@ class PhIREGANs:
     DEFAULT_PRINT_EVERY = 2 # How frequently (in iterations) to write out performance
     N_SHUFFLE = 4000
 
-    def __init__(self, data_type, N_epochs=None, learning_rate=None, epoch_shift=None, save_every=None, print_every=None, mu_sig=None, alpha_content=1.0, encoder=None):
+    def __init__(self, data_type, N_epochs=None, learning_rate=None, epoch_shift=None, save_every=None, print_every=None, mu_sig=None, alpha_content=1.0, encoder=None, compression=None):
 
         self.N_epochs      = N_epochs if N_epochs is not None else self.DEFAULT_N_EPOCHS
         self.learning_rate = learning_rate if learning_rate is not None else self.DEFAULT_LEARNING_RATE
         self.epoch_shift   = epoch_shift if epoch_shift is not None else self.DEFAULT_EPOCH_SHIFT
         self.save_every    = save_every if save_every is not None else self.DEFAULT_SAVE_EVERY
         self.print_every   = print_every if print_every is not None else self.DEFAULT_PRINT_EVERY
+        self.compression = compression
 
         self.data_type = data_type
         self.mu_sig = mu_sig
@@ -491,7 +492,8 @@ class PhIREGANs:
 
 
     def make_train_ds(self, data_path, batch_size, shuffle=True):
-        ds = tf.data.TFRecordDataset(data_path, num_parallel_reads=4)
+        ds = tf.data.TFRecordDataset(data_path, self.compression, num_parallel_reads=4)
+        print(self.compression)
         ds = ds.map(lambda xx: self._parse_train_(xx, self.mu_sig))
 
         if shuffle:
@@ -507,7 +509,7 @@ class PhIREGANs:
 
 
     def make_test_ds(self, data_path, batch_size):
-        ds = tf.data.TFRecordDataset(data_path, num_parallel_reads=4)
+        ds = tf.data.TFRecordDataset(data_path, self.compression, num_parallel_reads=4)
         ds = ds.map(lambda xx: self._parse_test_(xx, self.mu_sig)).batch(batch_size)
 
         iterator = tf.data.Iterator.from_structure(ds.output_types,
@@ -569,7 +571,7 @@ class PhIREGANs:
                 sets self.LR_data_shape
         '''
         print('Loading data ...', end=' ')
-        dataset = tf.data.TFRecordDataset(data_path)
+        dataset = tf.data.TFRecordDataset(data_path, self.compression)
         dataset = dataset.map(self._parse_test_).batch(1)
 
         iterator = dataset.make_one_shot_iterator()

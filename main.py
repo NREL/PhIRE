@@ -9,23 +9,23 @@ module_wrapper._PER_MODULE_WARNING_LIMIT = 0
 
 
 def main():
-    # ERA5 - temp,div,vort
-    #-------------------------------------------------------------
-    data_type = 'resnet'
-    data_path_train = sorted(glob('/data2/stengel/patches/patches_train_1980_1994.*.tfrecords'))
-    data_path_test = sorted(glob('/data/stengel/whole_images/stengel_eval_1995_1999.*.tfrecords'))
+    
+    data_type = 'mse'
+    compression='ZLIB'
+    data_path_train = sorted(glob('/data/stengel/HR/patches_train_1979_1990.*.tfrecords'))
+    data_path_test = None #sorted(glob('/data/stengel/whole_images/stengel_eval_1995_1999.*.tfrecords'))
     checkpoint = None
     r = [2,2]
 
-    encoder_path = '/data/repr_models/resnet_2021-05-24_1603/epoch31/'
-    encoder_layer = -33
-    loss_scale = 2.2
+    encoder_path = None
+    encoder_layer = 0
+    loss_scale = 1.0
 
     #mu_sig = [[275.28983, 1.8918675e-08, 2.3001131e-07], [16.951859, 2.19138e-05, 4.490682e-05]]
     # log values:
-    mu_sig = [[0.034322508, 0.01029128, 0.0031989873], [0.6344424, 0.53678083, 0.54819226]]
+    mu_sig = [[0.008315503, 0.0028762482], [0.5266841, 0.5418187]]
 
-    ######################################################
+    ################### ###################################
 
     if encoder_path:
         encoder = lambda: load_encoder(encoder_path, encoder_layer)
@@ -38,13 +38,14 @@ def main():
         print_every=50,
         N_epochs=1,
         save_every=1,
+        compression=compression,
         alpha_content=loss_scale,
         encoder=encoder
     )
     
     # Pretraining
     if True:
-        gan.N_epochs = 5
+        gan.N_epochs = 10
         checkpoint = gan.pretrain(
             r=r,
             data_path=data_path_train,
@@ -54,7 +55,17 @@ def main():
         print(checkpoint)
 
     # Training
-    if False:
+    if True:
+        gan.N_epochs = 15
+        gan.learning_rate = 1e-4
+        gan.epoch_shift = 0
+        checkpoint = gan.train(
+            r=r,
+            data_path=data_path_train,
+            model_path=checkpoint,
+            batch_size=64
+        )
+
         gan.N_epochs = 15
         gan.learning_rate = 1e-5
         gan.epoch_shift = 15
