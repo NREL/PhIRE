@@ -23,9 +23,9 @@ class DataSampler:
         ########################################################
 
         self.patch_size = (160,160)
-        self.n_patches = 50
+        self.n_patches = 40
         self.T_max = 4 * 8 
-        self.max_lat = 75
+        self.max_lat = 60
 
         self.log1p_norm = True
         self.z_norm = False
@@ -37,6 +37,10 @@ class DataSampler:
 
         self.n_processed = 0
         self.N = None
+
+        assert self.patch_size[0] % 2 == 0
+        assert self.patch_size[1] % 2 == 0
+
 
     def calc_moments(self):
         with h5py.File(self.infile, 'r', rdcc_nbytes=1000*1000*1000) as f:
@@ -124,6 +128,10 @@ class DataSampler:
     def write(self, writer, samples):
         for sample in samples:
             patch1, patch2, label, idx, (lat_start, long_start), (lat_end, long_end) = sample
+
+            assert patch1.shape[:2] == self.patch_size
+            assert patch2.shape[:2] == self.patch_size
+
             features = tf.train.Features(feature={
                 'index': _int64_feature(idx),
                 'patch1': _bytes_feature(patch1.tobytes()),
@@ -146,21 +154,24 @@ class DataSampler:
     def add_to_queue(self, queue, ds, indices):
         C,_,H,W = ds.shape
         h_min = round((H / 180) * (90-self.max_lat))
-        h_max = round((H / 180) * (260-self.max_lat)) - 1
+        h_max = round((H / 180) * (90+self.max_lat)) - 1
 
         H_patch, W_patch = self.patch_size
+        
+        assert H-h_max >= H_patch//2
 
         for idx in indices:
             img1 = self.fast_read(ds, idx)
+            img1 = np.pad(img1, ((0,0),  (0, W_patch), (0,0)), 'wrap')
 
             for _ in range(self.n_patches):
                 label = + random.randint(1, self.T_max)
                 lat,long = random.randint(h_min, h_max), random.randint(0, W-1)
 
                 # while this is a bit convoluted, it results in considerable speed gains due to the decreased file io
-                lat_slice = slice(lat, lat+H_patch)
+                lat_slice = slice(lat-H_patch//2, lat+H_patch//2)
                 long_slice = slice(long,long+W_patch)
-                if long+self.patch_size[1] < W:
+                if long+W_patch < W:
                     patch2 = self.fast_read(ds, idx + label, lat_slice, long_slice) 
                 else:
                     img2 = self.fast_read(ds, idx + label, lat_slice) 
