@@ -89,7 +89,7 @@ class DataSampler:
             ds = f['data']
             self.N = ds.shape[1] # CNHW layout!
 
-            indices = np.random.permutation(self.N-self.T_max) if self.shuffle else np.arange###################(self.N-self.T_max)
+            indices = np.random.permutation(self.N-self.T_max) if self.shuffle else np.arange(self.N-self.T_max)
             file_blocks = np.array_split(indices, self.n_files)
 
             for i, block in enumerate(file_blocks):
@@ -155,7 +155,7 @@ class DataSampler:
 
             for _ in range(self.n_patches):
                 label = + random.randint(1, self.T_max)
-                lat,long = random.randint(h_min, h_max), random.randint(0, W+W_patch-1)
+                lat,long = random.randint(h_min, h_max), random.randint(0, W-1)
 
                 # while this is a bit convoluted, it results in considerable speed gains due to the decreased file io
                 lat_slice = slice(lat, lat+H_patch)
@@ -187,21 +187,21 @@ class DataSampler:
 
 def parse_samples(serialized):
     feature = {
-        'index': tf.FixedLenFeature([], tf.int64),
-        'patch1': tf.FixedLenFeature([], tf.string),
-        'patch2': tf.FixedLenFeature([], tf.string),
-        'label': tf.FixedLenFeature([], tf.int64),
-        'T_max': tf.FixedLenFeature([], tf.int64),
-        'H': tf.FixedLenFeature([], tf.int64),
-        'W': tf.FixedLenFeature([], tf.int64),
-        'C': tf.FixedLenFeature([], tf.int64),
-        'lat_start': tf.FixedLenFeature([], tf.float64),
-        'long_start': tf.FixedLenFeature([], tf.float64),
-        'lat_end': tf.FixedLenFeature([], tf.float64),
-        'long_end': tf.FixedLenFeature([], tf.float64)
+        'index': tf.io.FixedLenFeature([], tf.int64),
+        'patch1': tf.io.FixedLenFeature([], tf.string),
+        'patch2': tf.io.FixedLenFeature([], tf.string),
+        'label': tf.io.FixedLenFeature([], tf.int64),
+        'T_max': tf.io.FixedLenFeature([], tf.int64),
+        'H': tf.io.FixedLenFeature([], tf.int64),
+        'W': tf.io.FixedLenFeature([], tf.int64),
+        'C': tf.io.FixedLenFeature([], tf.int64),
+        'lat_start': tf.io.FixedLenFeature([], tf.float32),
+        'long_start': tf.io.FixedLenFeature([], tf.float32),
+        'lat_end': tf.io.FixedLenFeature([], tf.float32),
+        'long_end': tf.io.FixedLenFeature([], tf.float32)
     }
     
-    examples = tf.parse_example(serialized, feature)
+    examples = tf.io.parse_example(serialized, feature)
     return examples
 
 
