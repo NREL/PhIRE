@@ -49,6 +49,16 @@ def _bytes_feature(value):
 def _int64_feature(value):
     return tf.train.Feature(int64_list=tf.train.Int64List(value=[value]))
 
+def _float_feature(value):
+    return tf.train.Feature(float_list=tf.train.FloatList(value=[value]))
+
+
+def json_to_tf1(json_str):
+    json_str = json_str.replace('"groups": 1,', '')
+    json_str = json_str.replace('"class_name": "Functional"', '"class_name": "Model"')
+    json_str = json_str.replace('"class_name": "HeNormal"', '"class_name": "RandomNormal"')
+    return json_str
+
 def downscale_image(x, K):
     tf.reset_default_graph()
 
