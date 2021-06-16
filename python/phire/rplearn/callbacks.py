@@ -7,7 +7,7 @@ class ModelSaver(tf.keras.callbacks.Callback):
     def __init__(self, dir):
         self.dir = Path(dir)
 
-    def on_epoch_end(self, epoch):
+    def on_epoch_end(self, epoch, logs):
         self.model.wrapper.save(self.dir / f'epoch{epoch}')
 
     def set_model(self, model):
@@ -24,7 +24,7 @@ class CSVLogger(tf.keras.callbacks.CSVLogger):
         self.keys = keys
 
     
-    def on_epoch_end(self, epoch, logs=None):
+    def on_epoch_end(self, epoch, logs):
         if self.keys:
             logs = logs or {}
             logs = dict((k, logs[k]) if k in logs else (k, 'NA') for k in self.keys)
