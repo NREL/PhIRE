@@ -1,7 +1,0 @@
-model_checkpoint_path: "gan"
-all_model_checkpoint_paths: "../gan00021/gan"
-all_model_checkpoint_paths: "../gan00022/gan"
-all_model_checkpoint_paths: "../gan00023/gan"
-all_model_checkpoint_paths: "../gan00024/gan"
-all_model_checkpoint_paths: "../gan00025/gan"
-all_model_checkpoint_paths: "gan"
