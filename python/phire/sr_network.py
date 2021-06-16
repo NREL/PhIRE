@@ -1,7 +1,7 @@
 ''' @author: Andrew Glaws, Karen Stengel, Ryan King
 '''
 import tensorflow as tf
-from layers import *
+from .layers import *
 
 
 class SR_NETWORK(object):

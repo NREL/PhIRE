@@ -8,8 +8,9 @@ import numpy as np
 import tensorflow as tf
 from itertools import count
 from time import strftime, time
-from utils import plot_SR_data
-from sr_network import SR_NETWORK
+
+from .utils import plot_SR_data
+from. sr_network import SR_NETWORK
 
 
 class PhIREGANs:
