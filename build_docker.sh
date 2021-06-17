@@ -1,2 +1,6 @@
 #!/bin/sh
-docker build . -t tf_docker
+
+SCRIPT=`realpath $0`
+SCRIPTPATH=`dirname $SCRIPT`
+
+docker build $SCRIPTPATH -t tf_docker
