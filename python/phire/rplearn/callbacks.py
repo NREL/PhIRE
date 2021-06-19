@@ -27,6 +27,10 @@ class CSVLogger(tf.keras.callbacks.CSVLogger):
     def on_epoch_end(self, epoch, logs):
         if self.keys:
             logs = logs or {}
+
+            if 'lr' in self.keys and 'lr' not in logs:
+                logs['lr'] = tf.keras.backend.get_value(self.model.optimizer.learning_rate)
+
             logs = dict((k, logs[k]) if k in logs else (k, 'NA') for k in self.keys)
-        
+
         super(CSVLogger, self).on_epoch_end(epoch, logs)

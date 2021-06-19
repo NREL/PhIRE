@@ -43,14 +43,33 @@ def make_train_ds(files, batch_size, n_shuffle=1000, compression_type='ZLIB'):
 
 def main():
     data_path_train = sorted(glob('/data2/stengel/HR/rplearn_train_1979_1990.*.tfrecords'))
-    data_path_eval = sorted(glob('/data2/stengel/HR/rplearn_train_1979_1990.*.tfrecords'))
+    data_path_eval = sorted(glob('/data2/stengel/HR/rplearn_eval_2000_2002.*.tfrecords'))
+    val_freq = 3
 
-    resnet = Resnet18((160,160,2), 4*8)
+    resnet = Resnet18((160,160,2), 4*8, activation='relu')
 
     model_dir = Path('/data/repr_models_HR')
-    prefix = 'test'
+    prefix = 'resnet18'
     description = '''
-    Hello
+    # Model:
+    Standard Resnet18 (without avg pooling), zero-padding projection
+    Tail stacks both 512 activations and then applied 256 1x1 conv (no BN) before passing to softmax
+    
+    batch-size: 256
+    activation: relu
+    initializer: he-normal
+
+    # Data:
+    full-res 160x160 patches with 4d lookahead
+    40 patches per image, 1979-1990 (12 years) -> 1.4 million patches (5475 batches)
+    eval on 2000-2002
+
+    # Input vars:
+    divergence (log1p), relative_vorticity (log1p)
+
+    # Training:
+    SGD with momentum=0.9
+    lr gets reduced on plateau by one order of magnitude
     '''
 
     start_time = datetime.today()
@@ -69,28 +88,30 @@ def main():
     loss = tf.keras.losses.CategoricalCrossentropy(from_logits=True),
     metrics = 'categorical_accuracy'
 
-    csv_logger = CSVLogger(checkpoint_dir / 'training.csv', keys=['loss', 'categorical_accuracy', 'val_loss', 'val_categorical_accuracy'], append=False, separator=' ')
+    csv_logger = CSVLogger(checkpoint_dir / 'training.csv', keys=['lr', 'loss', 'categorical_accuracy', 'val_loss', 'val_categorical_accuracy'], append=False, separator=' ')
     saver = ModelSaver(checkpoint_dir)
-    callbacks = [saver, csv_logger]
+    lr_reducer = tf.keras.callbacks.ReduceLROnPlateau('loss', min_delta=2e-2, min_lr=1e-5)
+    callbacks = [saver, csv_logger, lr_reducer]
 
     resnet.model.compile(
-        optimizer=tf.keras.optimizers.Adam(),
+        optimizer=tf.keras.optimizers.SGD(momentum=0.9),
         loss=loss,
         metrics=metrics
     )
 
-    train_ds = make_train_ds(data_path_train, 128)
-    eval_ds = make_train_ds(data_path_eval, 128)
+    train_ds = make_train_ds(data_path_train, 256)
+    eval_ds = make_train_ds(data_path_eval, 256, n_shuffle=None)
 
-    resnet.model.optimizer.learning_rate.assign(1e-4)
-    resnet.model.fit(train_ds, validation_data=eval_ds, validation_freq=5, epochs=1, callbacks=callbacks, verbose=1, initial_epoch=0)
-
-    resnet.model.optimizer.learning_rate.assign(1e-3)
-    resnet.model.fit(train_ds, validation_data=eval_ds, validation_freq=5, epochs=51, callbacks=callbacks, verbose=1, initial_epoch=1)
-
-    resnet.model.optimizer.learning_rate.assign(1e-4)
-    resnet.model.fit(train_ds, validation_data=eval_ds, validation_freq=5, epochs=66, callbacks=callbacks, verbose=1, initial_epoch=51)
-
+    resnet.model.optimizer.learning_rate.assign(1e-1)
+    resnet.model.fit(
+        train_ds, 
+        validation_data=eval_ds, 
+        validation_freq=val_freq, 
+        epochs=110, 
+        callbacks=callbacks,
+        verbose=2,
+        initial_epoch=0
+    )
 
 if __name__ == '__main__':
     main()

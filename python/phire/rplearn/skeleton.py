@@ -6,8 +6,9 @@ from ..utils import json_to_tf1
 
 class PretextModel:
 
-    def __init__(self, shape, n_classes, output_logits=True, activation='swish', name='pretext_model'):
+    def __init__(self, shape, n_classes, output_logits=True, activation='relu', regularizer=None, name='pretext_model'):
         self.activation = activation
+        self.regularizer = regularizer
         self.shape = shape
         self.n_classes = n_classes
         self.output_logits = output_logits
@@ -74,5 +75,8 @@ class PretextModel:
 
         if 'kernel_initializer' not in kwargs:
             kwargs['kernel_initializer'] = 'he_normal'
+
+        if 'kernel_regularizer' not in kwargs and self.regularizer:
+            kwargs['kernel_regularizer'] = self.regularizer
 
         return tf.keras.layers.Conv2D(filters, kernel, name=name, **kwargs)(x)

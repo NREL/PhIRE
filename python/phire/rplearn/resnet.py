@@ -5,32 +5,43 @@ class ResnetBase(PretextModel):
 
     def __init__(self, shape, n_classes, shortcut='padded', **kwargs):
         assert shortcut == 'padded' or shortcut == 'projection'
-        self.shortcut = shortcut
+        self.shortcut_type = shortcut
+
+        if 'regularizer' not in kwargs:
+            kwargs['regularizer'] = tf.keras.regularizers.L2(1e-4)
 
         super(ResnetBase, self).__init__(shape, n_classes, **kwargs)
 
-
     def resblock_down(self, x, filters, name, downscale=False):
+        strides = 2 if downscale else 1
+
         # residual:
-        r = self.conv(x, filters, 3, f'{name}_conv1', strides = 2 if downscale else 1, use_bias=False)
+        r = self.conv(x, filters, 3, f'{name}_conv1', strides = strides, use_bias=False)
         r = tf.keras.layers.BatchNormalization(name=f'{name}_bn1')(r)
+        r = tf.keras.layers.Activation(self.activation, name=f'{name}_act1')(r)
         
         r = self.conv(r, filters, 3, f'{name}_conv2', use_bias=False)
         r = tf.keras.layers.BatchNormalization(name=f'{name}_bn2')(r)
         
         # skip connection:
-        if downscale:
-            x = tf.keras.layers.AveragePooling2D(name=f'{name}_downscale')(x)
-        if x.shape[-1] != filters:
-            if self.shortcut == 'projection':
-                x = tf.keras.layers.Dense(filters, use_bias=False, name=f'{name}_linear')(x)
-            else:
-                x = tf.pad(x, [[0,0], [0,0], [0,0], [0, filters - x.shape[-1]]])
-
-        y = tf.keras.layers.Add(name=f'{name}_skip')([x,r])
-        y = tf.keras.layers.Activation(self.activation, name=f'{name}_act')(y)
+        shortcut = self.shortcut(x, filters, downscale, name)
+        y = tf.keras.layers.Add(name=f'{name}_skip')([shortcut,r])
+        y = tf.keras.layers.Activation(self.activation, name=f'{name}_act2')(y)
 
         return y
+
+    def shortcut(self, x, filters, downscale, name):
+        strides = 2 if downscale else 1
+
+        if x.shape[-1] != filters:
+            if self.shortcut_type == 'projection':
+                shortcut = self.conv(filters, 1, use_bias=False, strides=strides,  name=f'{name}_projection')(x)
+            else:
+                shortcut = tf.pad(x, [[0,0], [0,0], [0,0], [0, filters - x.shape[-1]]])[:, ::strides, ::strides, :]
+        else:
+            shortcut = x[:, ::strides, ::strides, :]
+
+        return shortcut
 
 
 class ResnetSmall(ResnetBase):
