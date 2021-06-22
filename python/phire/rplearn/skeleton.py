@@ -14,32 +14,36 @@ class PretextModel:
         self.output_logits = output_logits
         self.name = name
 
-        self.img1 = tf.keras.Input(shape=shape, name='img1_inp')
-        self.img2 = tf.keras.Input(shape=shape, name='img2_inp')
+        self.encoder = self.create_encoder(self.shape)
+        self.model = self.build_model(self.encoder)
+        self.model.wrapper = self
 
-        self.encoder = self.create_encoder(shape)
 
-        self.r1 = self.encoder(self.img1)
-        self.r2 = self.encoder(self.img2)
+    def build_model(self, encoder):
+        img1 = tf.keras.Input(shape=self.shape, name='img1_inp')
+        img2 = tf.keras.Input(shape=self.shape, name='img2_inp')
+
+        r1 = encoder(img1)
+        r2 = encoder(img2)
     
-        x = tf.keras.layers.Concatenate(name='stack')([self.r1, self.r2])
-        x = self.conv(x, 256, 1, 'final_conv')
-        x = tf.keras.layers.Activation(self.activation, name='final_conv_act')(x)
+        pred = self.build_tail(r1, r2)        
 
-        x = tf.keras.layers.Flatten(name='flatten')(x)
-        pred = tf.keras.layers.Dense(
-            self.n_classes,
-            use_bias=True,
-            activation=None if output_logits else 'softmax',
-            name='pred'
-        )(x)
-
-        self.model = tf.keras.Model(
-            inputs={'img1': self.img1, 'img2': self.img2},
-            outputs=[pred],
+        return tf.keras.Model(
+            inputs={'img1': img1, 'img2': img2},
+            outputs=pred,
             name=self.name
         )
-        self.model.wrapper = self
+
+
+    def build_tail(self, r1, r2):
+        x = tf.keras.layers.Concatenate(name='stack')([r1, r2])
+        
+        x = self.conv_bn_act(x, 128, 3, 'combined1', strides=2)
+        x = self.conv_bn_act(x, 128, 3, 'combined2')
+        x = tf.keras.layers.Flatten(name='flatten')(x)
+        
+        pred = self.dense(x, self.n_classes, 'pred', None if self.output_logits else 'softmax', use_bias=False)
+        return pred
 
 
     def load_weights(self, dir):
@@ -80,3 +84,36 @@ class PretextModel:
             kwargs['kernel_regularizer'] = self.regularizer
 
         return tf.keras.layers.Conv2D(filters, kernel, name=name, **kwargs)(x)
+
+    
+    def dense(self, x, filters, name, activation=None, **kwargs):
+        if 'kernel_initializer' not in kwargs:
+            kwargs['kernel_initializer'] = 'he_normal'
+
+        if 'kernel_regularizer' not in kwargs and self.regularizer:
+            kwargs['kernel_regularizer'] = self.regularizer
+
+        return tf.keras.layers.Dense(filters, activation=activation, name=name, **kwargs)(x)
+
+    
+    def bn(self, x, name):
+        return tf.keras.layers.BatchNormalization(name=name, epsilon=1.001e-5)(x)
+
+
+    def act(self, x, name):
+        return tf.keras.layers.Activation(self.activation, name=name)(x)
+
+
+    def conv_bn_act(self, x, filters, kernel, name, **kwargs):
+        x = self.conv(x, filters, kernel, name + '_conv', **kwargs)
+        x = self.bn(x, name+'_bn')
+        x = self.act(x, name+'_act')
+        return x
+
+
+def load_model(dir):
+    with open(Path(dir) / 'model.json', 'r') as f:
+        model = tf.keras.models.model_from_json(f.read())
+
+    model.load_weights(Path(dir) / 'model_weights.hdf5', by_name=True)
+    return model

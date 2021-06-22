@@ -165,7 +165,7 @@ class DataSampler:
             img1 = np.pad(img1, ((0,0),  (0, W_patch), (0,0)), 'wrap')
 
             for _ in range(self.n_patches):
-                label = + random.randint(1, self.T_max)
+                label = random.randint(1, self.T_max)
                 lat,long = random.randint(h_min, h_max), random.randint(0, W-1)
 
                 # while this is a bit convoluted, it results in considerable speed gains due to the decreased file io
