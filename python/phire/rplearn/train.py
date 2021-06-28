@@ -1,11 +1,14 @@
+import os
+#os.environ["CUDA_VISIBLE_DEVICES"]="-1" 
+
 import tensorflow as tf
 import numpy as np
 from glob import glob
 from pathlib import Path
 from datetime import datetime
-import os
+import matplotlib.pyplot as plt
 
-from .skeleton import load_model
+from .skeleton import load_model, load_encoder
 from .resnet import Resnet101, ResnetSmall, Resnet18
 from .data_tool import parse_samples
 from .callbacks import CSVLogger, ModelSaver
@@ -75,14 +78,14 @@ class Train:
         self.data_path_train = sorted(glob('/data2/stengel/HR/rplearn_train_1979_1990.*.tfrecords'))
         self.data_path_eval = sorted(glob('/data2/stengel/HR/rplearn_eval_2000_2002.*.tfrecords'))
         self.val_freq = 3
-        self.tmax = 20
+        self.n_classes = 31
 
-        self.resnet = ResnetSmall((160,160,2), self.tmax, output_logits=False, shortcut='projection')
+        self.resnet = ResnetSmall((160,160,2), self.n_classes, output_logits=False, shortcut='projection')
         #resnet = Resnet18((160,160,2), 16, output_logits=False, shortcut='projection')
         #resnet = Resnet101((160,160,2), 16, output_logits=False)
 
         self.model_dir = Path('/data/repr_models_HR')
-        self.prefix = 'resnet-small-20c'
+        self.prefix = 'resnet-small-31c'
         self.description = '''
         # Model:
         Our small resnet architecture, 4 blocks with filters [16,32,64,128] and 6 residual blocks in each.
@@ -96,7 +99,7 @@ class Train:
         initializer: he-normal
 
         # Data:
-        full-res 160x160 patches with 2.5d lookahead
+        full-res 160x160 patches with 4d lookahead
         20 patches per image, 1979-1990 (12 years) -> 0.7 million patches (we reduced this artificially for comparability)            
         eval on 2000-2002
 
@@ -127,9 +130,9 @@ class Train:
 
 
     def setup_ds(self):
-        self.train_ds = make_train_ds(self.data_path_train, 128, n_shuffle=2000, tmax=self.tmax+1)
+        self.train_ds = make_train_ds(self.data_path_train, 128, n_shuffle=2000, tmax=self.n_classes+1)
         self.train_ds = self.train_ds.take(5400)  # for comparability
-        self.eval_ds = make_train_ds(self.data_path_eval, 128, n_shuffle=None, tmax=self.tmax+1)
+        self.eval_ds = make_train_ds(self.data_path_eval, 128, n_shuffle=None, tmax=self.n_classes+1)
 
 
     def train(self):
@@ -138,7 +141,7 @@ class Train:
 
         csv_logger = CSVLogger(self.checkpoint_dir / 'training.csv', keys=['lr', 'loss', 'categorical_accuracy', 'val_loss', 'val_categorical_accuracy'], append=True, separator=' ')
         saver = ModelSaver(self.checkpoint_dir)
-        lr_reducer = tf.keras.callbacks.ReduceLROnPlateau('loss', min_delta=4e-2, min_lr=1e-5, patience=6)
+        lr_reducer = tf.keras.callbacks.ReduceLROnPlateau('loss', min_delta=4e-2, min_lr=1e-5, patience=8)
         callbacks = [saver, csv_logger]
 
         optimizer = tf.keras.optimizers.SGD(momentum=0.9, clipnorm=5.0)
@@ -181,10 +184,77 @@ class Train:
         return model.evaluate(ds, verbose=1)
 
 
-def main():
-    Train().run()
-    #Train().evaluate_single('/data/repr_models_HR/resnet-small_2021-06-22_0127/epoch23/', on_train=False)
+    def evaluate_loss(self, dir, on_train, layer=-1):
+        if dir:
+            encoder = load_encoder(dir)
+            inp = encoder.input
+            out = encoder.layers[layer].output
+            encoder = tf.keras.Model(inputs=inp, outputs=out)
+        else:
+            encoder = tf.identity
+
+        img1 = tf.keras.Input(shape=[160,160,2], name='img1_inp')
+        img2 = tf.keras.Input(shape=[160,160,2], name='img2_inp')
+
+        r1 = encoder(img1)
+        r2 = encoder(img2)
+
+        sq_diffs = tf.math.squared_difference(r1, r2)
+        l2 = tf.math.reduce_mean(sq_diffs, axis=[1,2,3])
+
+        model = tf.keras.Model(inputs={'img1': img1, 'img2': img2}, outputs=l2)
+
+        ds = self.train_ds if on_train else self.eval_ds
+        samples = {i: [] for i in range(self.tmax)}
+
+        for X,y,weight in ds.take(200):
+            preds = model(X)
+            labels = np.argmax(y, axis=1)
+
+            for pred, label in zip(preds, labels):
+                samples[label].append(pred)
+
+        means = [np.mean(samples[i]) for i in range(self.tmax)]
+        stds = [np.std(samples[i]) for i in range(self.tmax)]
+        
+        plt.figure()
+        plt.errorbar(np.arange(self.tmax), means, stds, marker='^')
+        plt.savefig(f'layer{layer}_loss.png')
+        plt.close()
+        
+        print(means)
+        print(1.54 / means[15])
+
     
+    def check_gradient(self, dir, with_checkboard=False):
+        encoder = load_encoder(dir)
+        batch = next(iter(self.train_ds))
+        img1, img2 = batch[0]['img1'][0], batch[0]['img2'][0]
+
+        def calc_and_save_grad(x, prefix):
+            with tf.GradientTape() as tape:
+                tape.watch(x)
+                l2 = tf.math.reduce_mean(tf.math.squared_difference(img1,x))
+            
+            grad = tape.gradient(l2, x).numpy()
+            for c in range(grad.shape[-1]):
+                plt.imsave(f'{prefix}{c}.png', grad[..., c])
+
+            return grad
+
+        checkboard = np.asarray([[1, 0.5], [-0.5, 0]])
+        noisy = img2 + 2 * np.tile(checkboard, (img2.shape[0]//2,img2.shape[0]//2))[:,:,None]
+        calc_and_save_grad(noisy, 'grad_checkboard')
+
+        calc_and_save_grad(img2, f'grad')
+
+
+def main():
+    #Train().run()
+    #Train().evaluate_single('/data/repr_models_HR/resnet-small-16c_2021-06-22_0127/epoch20/', on_train=False)
+    #Train().evaluate_loss('/data/repr_models_HR/resnet-small-16c_2021-06-22_0127/epoch20/', on_train=True)
+    #Train().evaluate_loss(None, on_train=True, layer='mse')
+    Train().check_gradient('/data/repr_models_HR/resnet-small-16c_2021-06-22_0127/epoch20/', with_checkboard=True)
 
 if __name__ == '__main__':
     main()

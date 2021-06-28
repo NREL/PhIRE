@@ -117,3 +117,11 @@ def load_model(dir):
 
     model.load_weights(Path(dir) / 'model_weights.hdf5', by_name=True)
     return model
+
+
+def load_encoder(dir):
+    with open(Path(dir) / 'encoder.json', 'r') as f:
+        model = tf.keras.models.model_from_json(f.read())
+
+    model.load_weights(Path(dir) / 'encoder_weights.hdf5', by_name=True)
+    return model
