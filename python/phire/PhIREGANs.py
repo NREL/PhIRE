@@ -9,8 +9,7 @@ import tensorflow as tf
 from itertools import count
 from time import strftime, time
 
-from .utils import plot_SR_data
-from. sr_network import SR_NETWORK
+from .sr_network import SR_NETWORK
 
 
 class PhIREGANs:
@@ -381,12 +380,6 @@ class PhIREGANs:
 
                         batch_LR = self.mu_sig[1]*batch_LR + self.mu_sig[0]
                         batch_SR = self.mu_sig[1]*batch_SR + self.mu_sig[0]
-                        
-                        if plot_data:
-                            img_path = '/'.join([self.data_out_path, 'imgs'])
-                            if not os.path.exists(img_path):
-                                os.makedirs(img_path)
-                            plot_SR_data(batch_idx, batch_LR, batch_SR, img_path)
 
                         if return_batches and return_hr:
                             batch_HR = self.mu_sig[1]*batch_HR + self.mu_sig[0]

@@ -2,45 +2,64 @@ import numpy as np
 import tensorflow as tf
 #import matplotlib.pyplot as plt
 
+class Welford:
 
-def plot_SR_data(idx, LR, SR, path):
+    def __init__(self):
+        self._mean = None
+        self._M = None
+        self._n = 0
 
-    for i in range(LR.shape[0]):
-        vmin0, vmax0 = np.min(SR[i,:,:,0]), np.max(SR[i,:,:,0])
-        vmin1, vmax1 = np.min(SR[i,:,:,1]), np.max(SR[i,:,:,1])
 
-        plt.figure(figsize=(12, 12))
-        
-        plt.subplot(221)
-        plt.imshow(LR[i, :, :, 0], vmin=vmin0, vmax=vmax0, cmap='viridis', origin='lower')
-        plt.title('LR 0 Input', fontsize=9)
-        plt.colorbar()
-        plt.xticks([], [])
-        plt.yticks([], [])
-        
-        plt.subplot(223)
-        plt.imshow(LR[i, :, :, 1], vmin=vmin1, vmax=vmax1, cmap='viridis', origin='lower')
-        plt.title('LR 1 Input', fontsize=9)
-        plt.colorbar()
-        plt.xticks([], [])
-        plt.yticks([], [])
-        
-        plt.subplot(222)
-        plt.imshow(SR[i, :, :, 0], vmin=vmin0, vmax=vmax0, cmap='viridis', origin='lower')
-        plt.title('SR 0 Output', fontsize=9)
-        plt.colorbar()
-        plt.xticks([], [])
-        plt.yticks([], [])
-        
-        plt.subplot(224)
-        plt.imshow(SR[i, :, :, 1], vmin=vmin1, vmax=vmax1, cmap='viridis', origin='lower')
-        plt.title('SR 1 Output', fontsize=9)
-        plt.colorbar()
-        plt.xticks([], [])
-        plt.yticks([], [])
+    def update(self, data, axis=None):
+        if axis is None:
+            axis = tuple(range(data.ndim))
+        elif not isinstance(axis, tuple):
+            axis = (axis,)
 
-        plt.savefig(path+'/img{0:05d}.png'.format(idx[i]), dpi=200, bbox_inches='tight')
-        plt.close()
+        data = np.asanyarray(data)
+        
+        n_b = int(np.prod([data.shape[ax] for ax in axis]))
+        n_ab = self._n + n_b
+
+        if self._mean is None:
+           self._mean = np.mean(data, axis=axis)
+           self._M = np.sum((data - np.expand_dims(self._mean, axis))**2, axis)
+        
+        else:
+            mean_b = np.mean(data, axis=axis) 
+            M_b = np.sum((data - np.expand_dims(mean_b, axis))**2, axis)
+
+            delta = mean_b - self._mean
+            if abs(self._n - n_b) <= 100 and self._n >= 1000:
+                self._mean = (self._n * self._mean + n_b * mean_b) / n_ab
+            else:
+                self._mean += delta * n_b/n_ab
+
+            self._M += M_b + delta**2 * self._n * n_b / n_ab
+
+        self._n += n_b
+
+
+    @property
+    def var(self):
+        assert self._mean is not None
+        return self._M / self._n
+
+
+    @property
+    def std(self):
+        return np.sqrt(self.var)
+
+
+    @property
+    def mean(self):
+        assert self._mean is not None
+        return self._mean
+
+
+    @property
+    def n(self):
+        return self._n
 
 
 def _bytes_feature(value):

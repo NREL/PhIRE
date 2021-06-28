@@ -1,7 +1,7 @@
 ''' @author: Karen Stengel
 '''
-from PhIREGANs import *
-from encoder import load_encoder
+from .PhIREGANs import *
+from .encoder import load_encoder
 from glob import glob
 
 from tensorflow.python.util import module_wrapper
@@ -10,16 +10,16 @@ module_wrapper._PER_MODULE_WARNING_LIMIT = 0
 
 def main():
     
-    data_type = 'mse'
+    data_type = 'resnet-small-16c'
     compression='ZLIB'
     data_path_train = sorted(glob('/data/stengel/HR/patches_train_1979_1990.*.tfrecords'))
     data_path_test = None #sorted(glob('/data/stengel/whole_images/stengel_eval_1995_1999.*.tfrecords'))
     checkpoint = None
     r = [2,2]
 
-    encoder_path = None
-    encoder_layer = 0
-    loss_scale = 1.0
+    encoder_path = '/data/repr_models_HR/resnet-small-16c_2021-06-22_0127/epoch20/'
+    encoder_layer = -1
+    loss_scale = 0.15
 
     #mu_sig = [[275.28983, 1.8918675e-08, 2.3001131e-07], [16.951859, 2.19138e-05, 4.490682e-05]]
     # log values:
