@@ -36,7 +36,7 @@ def generate_TFRecords(writer, data, K, mode, HR_patches, n_patches):
     assert data.dtype == np.float32
 
     if mode == 'train':
-        data_LR = tf.nn.avg_pool2d(data, [1, K, K, 1], [1, K, K, 1],  padding='SAME')
+        data_LR = tf.nn.avg_pool2d(data, [1, K, K, 1], [1, K, K, 1],  padding='SAME').numpy()
 
     if HR_patches:
         data, y, x = patchify_random(data, HR_patches, n_patches)
@@ -59,7 +59,7 @@ def generate_TFRecords(writer, data, K, mode, HR_patches, n_patches):
                                     'h_HR': _int64_feature(h_HR),
                                     'w_HR': _int64_feature(w_HR),
                                         'c': _int64_feature(c)})
-        elif mode == 'test':
+        elif mode == 'eval':
             h_LR, w_LR, c = data[j].shape
 
             features = tf.train.Features(feature={
@@ -68,6 +68,8 @@ def generate_TFRecords(writer, data, K, mode, HR_patches, n_patches):
                                     'h_LR': _int64_feature(h_LR),
                                     'w_LR': _int64_feature(w_LR),
                                         'c': _int64_feature(c)})
+        else:
+            raise ValueError('invalid mode')
 
         example = tf.train.Example(features=features)
         writer.write(example.SerializeToString())
@@ -76,11 +78,11 @@ def generate_TFRecords(writer, data, K, mode, HR_patches, n_patches):
 def main():
     ########################################################
     
-    infile = '/data/ERA5/hdf5_hr/ds_train_1979_to_1990.hdf5'
-    outfile = 'patches_train_1979_1990.{}.tfrecords'
+    infile = '/data/ERA5/hdf5_hr/ds_eval_2000_to_2002.hdf5'
+    outfile = 'sr_eval_2000_2002.{}.tfrecords'
     n_files = 8
     gzip = True
-    shuffle = True
+    shuffle = False
 
     ########################################################
 
@@ -93,9 +95,10 @@ def main():
 
     #########################################################
 
-    HR_reduce_latitude = 107  # 15 deg from each pole
-    HR_patches = (96, 96)
+    HR_reduce_latitude = 0#107  # 15 deg from each pole
+    patch_size = None#(96, 96)
     n_patches = 50
+    mode = 'train'
 
     ########################################################
 
@@ -157,9 +160,9 @@ def main():
                     lat_start = HR_reduce_latitude//2
                     block = block[:, lat_start:(-lat_start),:, :]
 
-                generate_TFRecords(writer, block, SR_ratio, 'train', HR_patches, n_patches)
+                generate_TFRecords(writer, block, SR_ratio, mode, patch_size, n_patches)
                 i += 1
-                print('{} / {}'.format(i, data.numblocks[0]))
+                print('{} / {}'.format(i, data.numblocks[0]), flush=True)
 
 if __name__ == '__main__':
     main()

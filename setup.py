@@ -4,7 +4,8 @@ console_scripts = [
     'rplearn-data=phire.rplearn.data_tool:main',
     'rplearn-train=phire.rplearn.train:main',
     'phire-train=phire.main:main',
-    'phire-eval=phire.evaluation:main'
+    'phire-eval=phire.evaluation:main',
+    'phire-data=phire.era5_to_tfrecords:main'
 ]
 
 packages = find_packages('python')
