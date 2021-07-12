@@ -1,6 +1,7 @@
 import os
 #os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
+import json
 import numpy as np
 from glob import glob
 from pathlib import Path
@@ -101,8 +102,11 @@ class PowerSpectrum(EvaluationMethod):
 
 
     def summarize(self, paths, outdir):
-        for c in range(self.shape[-1]):
-            plt.figure(figsize=(7,4))
+        p = paths[next(iter(paths))]
+        C = len(glob(str(p / 'spectrum_channel_*.csv')))
+
+        for c in range(C):
+            plt.figure(figsize=(10,5))
             plt.xscale('log')
             plt.yscale('log')
             plt.xlabel('wavenumber')
@@ -114,10 +118,11 @@ class PowerSpectrum(EvaluationMethod):
                 plt.plot(x, spectrum, label=name)
 
             plt.plot(x, x**(-5/3) * spectrum[0], '--')
+            plt.legend()
 
             plt.savefig(outdir / f'spectrum_channel_{c}.png')
 
-        plt.figure(figsize=(7,4))
+        plt.figure(figsize=(10,5))
         plt.xscale('log')
         plt.yscale('log')
         plt.xlabel('wavenumber')
@@ -129,6 +134,7 @@ class PowerSpectrum(EvaluationMethod):
             plt.plot(x, spectrum, label=name)
 
         plt.plot(x, x**(-5/3) * spectrum[0], '--')
+        plt.legend()
 
         plt.savefig(outdir / 'energy_spectrum.png')
 
@@ -195,7 +201,6 @@ class Semivariogram(EvaluationMethod):
 
     def __init__(self, lat_min = 0, lat_max = 180, long_min = 0, long_max=360, direction=None, n_samples=20):
         super(Semivariogram, self).__init__()
-        self.needs_sh = True
         
         self.lat_min = lat_min
         self.lat_max = lat_max
@@ -204,73 +209,23 @@ class Semivariogram(EvaluationMethod):
 
         self.direction = direction
         self.n_samples = n_samples
-        self.lags = np.asarray([10, 20, 30, 40, 50, 75, 100, 250, 500])
+        self.lags = np.asarray([25, 50, 100, 200, 300, 500, 1000])
         self.variances = Welford()
 
 
     def set_shape(self, shape):
         self.C = shape[-1]
         self.diffs = [[[] for _ in self.lags] for _ in range(self.C)]
+    
 
-
-    def _sample(self, sh, r_degree):
-        lat = np.random.uniform(-90, 90, size=self.n_samples)
-        lon = np.random.uniform(0, 360, size=self.n_samples)
-
-        if self.direction:
-            directions = np.tile(self.direction, (self.n_samples, 1))
-        else:
-            directions = np.random.normal(size=2*self.n_samples).reshape((self.n_samples, 2))
-
-        directions = r_degree * (directions / np.linalg.norm(directions, axis=1)[:, None])
-        
-        lat2 = lat+directions[:,0]
-        lon2 = lon+directions[:,1]
-
-        # wrap-around
-        lon2[(lat2 > 90) | (lat2 < -90)] = lon2[(lat2 > 90) | (lat2 < -90)] + 180
-        lat2[lat2 > 90] = 180 - lat2[lat2 > 90]
-        lat2[lat2 < -90] = -180 - lat2[lat2 < -90]
-
-        y1 = pysh.expand.MakeGridPoint(sh, lat=lat, lon=lon) 
-        y2 = pysh.expand.MakeGridPoint(sh, lat=lat2, lon=lon2)
-
-        return y1, y2
-
-
-    def _sample_multiple(self, sh, radi):
-        lat = np.random.uniform(-90, 90, size=(self.n_samples, len(radi)))
-        lon = np.random.uniform(0, 360, size=(self.n_samples, len(radi)))
-
-        if self.direction:
-            directions = np.broadcast_to(self.direction[None, :, None], (self.n_samples, 2, len(radi)))
-        else:
-            directions = np.random.normal(size=self.n_samples*2*len(radi)).reshape((self.n_samples, 2, len(radi)))
-
-        directions = directions / np.linalg.norm(directions, axis=1, keepdims=True)
-        
-        lat2 = lat + directions[:,0,:] * radi
-        lon2 = lon + directions[:,1,:] * radi
-
-        # wrap-around
-        lon2[(lat2 > 90) | (lat2 < -90)] = lon2[(lat2 > 90) | (lat2 < -90)] + 180
-        lat2[lat2 > 90] = 180 - lat2[lat2 > 90]
-        lat2[lat2 < -90] = -180 - lat2[lat2 < -90]
-
-        y = pysh.expand.MakeGridPoint(sh, lat=np.concatenate([lat, lat2]), lon=np.concatenate([lon, lon2])) 
-        y = y.reshape(2, self.n_samples, -1)
-
-        return y[0], y[1]
-
-
-    def _sample_2(self, sh, radius):
+    def _sample_3(self, img, radius):
         xyz = np.random.normal(size=(self.n_samples, 3))
         xyz /= np.linalg.norm(xyz, axis=1, keepdims=True)
 
         lats = 90 - 180*np.arccos(xyz[:,2])/np.pi  # [0, pi] -> [90, -90]
         lons = 180 + 180*np.arctan2(xyz[:,0], xyz[:,1])/np.pi  # [-pi, pi] -> [0, 360]
 
-        y = pysh.expand.MakeGridPoint(sh, lats, lons) 
+        y = self.sample_point(img, lats, lons) 
         
         if self.direction:
             directions = np.rint(359 * self.direction/2/np.pi)
@@ -285,19 +240,27 @@ class Semivariogram(EvaluationMethod):
             lats2.append(p[0])
             lons2.append(p[1])
 
-        y2 = pysh.expand.MakeGridPoint(sh, lats2, lons2)
+        y2 = self.sample_point(img, lats2, lons2)
         return y, y2
 
-    def evaluate_SR_sh(self, i, LR, SR, SR_sh):
-        for img_sh in SR_sh:
+    def sample_point(self, img, lat, lon):
+        H,W = img.shape[0], img.shape[1]
+        lat = np.rint((90 - np.asarray(lat)) * (H-1)/180).astype('i8')
+        lon = np.rint(np.asarray(lon) * (W-1)/360).astype('i8')
+
+        return img[lat, lon]
+    
+    
+    def evaluate_SR(self, idx, LR, SR):
+        for img in SR:
             for c in range(self.C):
                 for i in range(len(self.lags)):          
-                    y1, y2 = self._sample_2(img_sh[..., c], self.lags[i])
+                    y1, y2 = self._sample_3(img[..., c], self.lags[i])
                     sq_diffs = (y1 - y2)**2
                     self.diffs[c][i] += list(sq_diffs)
 
         self.variances.update(SR, axis=(0,1,2))
-
+    
 
     def finalize(self):
         diffs = np.asarray(self.diffs)  # C x lag x N
@@ -335,9 +298,11 @@ class Semivariogram(EvaluationMethod):
         means = means / ds_var[None, :, None]
         stds = stds / ds_var[None, :, None]
 
+        stds *= 0
+
         C = means.shape[1]
         for c in range(C):
-            plt.figure(figsize=(7,3))
+            plt.figure(figsize=(10,5))
             plt.yscale('log')
             plt.xscale('log')
 
@@ -345,31 +310,94 @@ class Semivariogram(EvaluationMethod):
                 plt.errorbar(lags, means[i,c], stds[i,c], label=name)
 
             plt.xlabel('lag distance')
+            plt.legend()
 
-            plt.savefig(self.dir / f'semivariogram_channel_{c}.png')
+            plt.savefig(outdir / f'semivariogram_channel_{c}.png')
+
+
+class Moments(EvaluationMethod):
+
+    def __init__(self):
+        super(Moments, self).__init__()
+        self.welford_sr = Welford()
+        self.welford_hr = Welford()
+
+    
+    def evaluate_both(self, idx, LR, SR, HR):
+        self.welford_sr.update(SR, axis=0)
+        self.welford_hr.update(HR, axis=0)
+
+
+    def finalize(self):
+        C = self.welford_sr.mean.shape[-1]
+
+        mean_sr, std_sr = self.welford_sr.mean, self.welford_sr.std
+        mean_hr, std_hr = self.welford_hr.mean, self.welford_hr.std
+
+        # SR
+        np.save(self.dir / 'mean.npy', mean_sr)
+        np.save(self.dir / 'std.npy', std_sr)
+
+        for c in range(C):
+            plt.imsave(self.dir / f'mean_{c}.png', mean_sr[..., c])
+            plt.imsave(self.dir / f'std_{c}.png', std_sr[..., c])
+
+        # HR
+        np.save(self.dir / 'mean_groundtruth.npy', mean_hr)
+        np.save(self.dir / 'std_groundtruth.npy', std_hr)
+
+        for c in range(C):
+            plt.imsave(self.dir / f'mean_{c}_grountruth.png', mean_hr[..., c])
+            plt.imsave(self.dir / f'std_{c}_groundtruth.png', std_hr[..., c])
+
+        # Diff
+        for c in range(C):
+            plt.imsave(self.dir / f'mean_{c}_diff.png', mean_sr[..., c] - mean_hr[..., c])
+            plt.imsave(self.dir / f'std_{c}_diff.png', std_sr[..., c] - std_hr[..., c]) 
+
+
+    def summarize(self, paths, outdir):
+        means = {k: np.load(path / 'mean.npy') for k,path in paths.items()}
+        stds = {k: np.load(path / 'std.npy') for k,path in paths.items()}
+
+        total_error = {k: np.sum((mean - means['groundtruth'])**2) for k, mean in means.items()}
+        with open(outdir / 'cumulative_squared_error.json', 'w') as f:
+            json.dump(total_error, f)
+            
 
 
 class Evaluation:
 
     def __init__(self):
-        self.dir = Path('/data/results/srgan/resnet-small-16c/gan17/')
-        self.checkpoint = '/data/results/models/resnet-small-16c-20210622-172045/training/gan-17'
+        #self.dir = '/data/results/srgan/resnet-small-16c/gan17/'
+        #self.checkpoint = '/data/results/models/resnet-small-16c-20210622-172045/training/gan-17'
+        
+        #self.dir = '/data/results/srgan/resnet-small-16c-2xdata/gan17'
+        #self.checkpoint = '/data/results/models/resnet-small-16c-2xdata-20210705-055431/training/gan-17'
 
-        #self.dir = Path('/data/results/srgan/mse/gan17/')
+        self.dir = '/data/results/srgan/resnet-small-16c-2xdata-pre2/gan15'
+        self.checkpoint = '/data/results/models/resnet-small-16c-2xdata-pre2-20210710-134110/training/gan-15'
+
+        #self.dir = '/data/results/srgan/mse/gan17/'
+        #self.checkpoint = '/data/results/models/mse-20210608-094931/training/gan-17'
+
+        #self.dir = '/data/results/srgan/groundtruth'
         #self.checkpoint = '/data/results/models/mse-20210608-094931/training/gan-17'
 
         self.groundtruth = False
+
         self.denorm = True
 
         self.dataset = sorted(glob('/data/stengel/HR/sr_eval_2000_2002.*.tfrecords'))
         
         ##########################################
 
-        self.mean_log1p, self.std_log1p = [0.008315503, 0.0028762482], [0.5266841, 0.5418187]
+        self.mean_log1p, self.std_log1p = [0.0008630127, 0.0003224114], [0.15800296, 0.16053197]
+        #self.mean_log1p, self.std_log1p = [0.008315503, 0.0028762482], [0.5266841, 0.5418187]
         self.mean, self.std = [2.0152406e-08, 2.1581373e-07], [2.8560082e-05, 5.0738556e-05]
 
         self.save_every = 1
-        self.batch_size = 2  # cdnn limits to 2 giga-elements, 2x1280x2560x256 ~ 1.6giga
+        self.batch_size = 2  # cudnn limits to 2 giga-elements, 2x1280x2560x256 ~ 1.6giga
         self.r = [2,2]
 
         self.measure_time = False
@@ -389,8 +417,9 @@ class Evaluation:
 
         if self.denorm:
             metrics = {
-                'power-spectrum': PowerSpectrum(1280, 2560),
-                'semivariogram': Semivariogram(n_samples=20),
+                #'power-spectrum': PowerSpectrum(1280, 2560),
+                #'semivariogram': Semivariogram(n_samples=20),
+                #'moments': Moments(),
                 'img-SEA': vis_sea,
                 'img-EU': vis_eu,
                 'img-NA': vis_na,
@@ -413,23 +442,25 @@ class Evaluation:
 
     def deprocess(self, batch):
         y = batch * self.std_log1p + self.mean_log1p
-        y =  np.sign(y) * np.expm1(np.fabs(y))
+        y =  np.sign(y) * np.expm1(np.fabs(y)) / 0.2
         return y*self.std + self.mean
 
 
-    def create_dirs(self):
+    def create_dirs(self, dir):
         for name, metric in self.metrics.items():
+            metric_dir = Path(dir) / name
+
             try:
-                os.makedirs(self.dir / name)
+                os.makedirs(metric_dir)
             except OSError:
-                resp = input(f'{self.dir / name} already exists. Continue? (y/n)')
+                resp = input(f'{metric_dir} already exists. Continue? (y/n)')
                 if resp != 'y' and resp != 'Y':
                     print('Evaluation cancelled')
                     return False
                 else:
-                    os.makedirs(self.dir / name, exist_ok=True)
+                    os.makedirs(metric_dir, exist_ok=True)
             
-            metric.set_dir(self.dir / name)
+            metric.set_dir(metric_dir)
         
         return True
 
@@ -437,28 +468,30 @@ class Evaluation:
     def run(self):
         calc_sh = any(metric.needs_sh for metric in self.metrics.values())
 
-        if not self.create_dirs():
+        if not self.create_dirs(self.dir):
             return
 
-        gan = PhIREGANs('eval', mu_sig=[[0,0], [1,1]], print_every=1e9, compression='ZLIB')
+        gan = PhIREGANs('eval', mu_sig=[self.mean_log1p, self.std_log1p], print_every=1e9, compression='ZLIB')
         iter_ = gan.test(
             self.r, 
             self.dataset, 
             self.checkpoint, 
             batch_size=self.batch_size, 
-            save_every=self.save_every, 
-            return_batches=True, 
+            save_every=self.save_every,  
             return_hr=True,
+            only_hr=self.groundtruth
         )
 
+        t1_gan = time()
         for i, (LR, SR, HR) in enumerate(iter_):
+            if self.measure_time:
+                print(f'inference took {time()-t1_gan:.2f}s')
+                t1_gan = time()
+
             if self.denorm:
                 LR = self.deprocess(LR)
                 HR = self.deprocess(HR)
                 SR = self.deprocess(SR)
-
-            if self.groundtruth:
-                SR = HR
             
             if calc_sh:
                 t1 = time()
@@ -486,6 +519,9 @@ class Evaluation:
                 if self.measure_time:
                     print(f'{name} took {t2-t1:.2f}s')
 
+            if i==30:
+                break
+
             print(i, flush=True)
 
 
@@ -493,13 +529,27 @@ class Evaluation:
             metric.finalize()
 
 
-    def summarize(self, paths):
-        pass
+    def summarize(self, outdir, paths):
+        if not self.create_dirs(outdir):
+            return
+
+        for metric_name, metric in self.metrics.items():
+            metric_paths = {name: Path(path) / metric_name for name,path in paths.items()}
+            metric.summarize(metric_paths, metric.dir)
+
 
 
 def main():
-    Evaluation().run()
-
+    if True:
+        Evaluation().run()
+    
+    else: 
+        Evaluation().summarize('summary', {
+            'groundtruth': '/data/results/srgan/groundtruth',
+            #'resnet-small-16c': '/data/results/srgan/resnet-small-16c/gan17',
+            'resnet-small-16c-2xdata': '/data/results/srgan/resnet-small-16c-2xdata/gan17',
+            'mse': '/data/results/srgan/mse/gan17'
+        })
 
 if __name__ == '__main__':
     main()

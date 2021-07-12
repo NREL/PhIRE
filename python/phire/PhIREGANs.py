@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import os
 import sys
+import csv
 import numpy as np
 import tensorflow as tf
 from itertools import count
@@ -131,50 +132,56 @@ class PhIREGANs:
                 print('Done.')
 
             # Start training
-            iters = 0
-            for epoch in range(self.epoch_shift+1, self.epoch_shift+self.N_epochs+1):
-                print('Epoch: %d' %(epoch))
-                start_time = time()
+            with open(checkpoint_dir + '/training.csv', 'w', newline='') as csv_file:
+                csv_writer = csv.writer(csv_file)
+                csv_writer.writerow(['i', 'g_loss'])
+                iters = 0
+                for epoch in range(self.epoch_shift+1, self.epoch_shift+self.N_epochs+1):
+                    print('Epoch: %d' %(epoch))
+                    start_time = time()
 
-                sess.run(init_iter)
-                try:
-                    epoch_loss, N = 0, 0
-                    while True:
-                        batch_idx, batch_LR, batch_HR = sess.run([idx, LR_out, HR_out])
-                        N_batch = batch_LR.shape[0]
-                        feed_dict = {x_HR:batch_HR, x_LR:batch_LR}
+                    sess.run(init_iter)
+                    try:
+                        epoch_loss, N = 0, 0
+                        while True:
+                            batch_idx, batch_LR, batch_HR = sess.run([idx, LR_out, HR_out])
+                            N_batch = batch_LR.shape[0]
+                            feed_dict = {x_HR:batch_HR, x_LR:batch_LR}
 
-                        # Training step of the generator
-                        sess.run(g_train_op, feed_dict=feed_dict)
+                            # Training step of the generator
+                            sess.run(g_train_op, feed_dict=feed_dict)
 
-                        # Calculate current losses
-                        gl = sess.run(model.g_loss, feed_dict={x_HR: batch_HR, x_LR: batch_LR})
+                            # Calculate current losses
+                            gl = sess.run(model.g_loss, feed_dict={x_HR: batch_HR, x_LR: batch_LR})
 
-                        epoch_loss += gl*N_batch
-                        N += N_batch
+                            epoch_loss += gl*N_batch
+                            N += N_batch
 
-                        iters += 1
-                        if (iters % self.print_every) == 0:
-                            print('Iteration=%d, G loss=%.5f' %(iters, gl))
-                            sys.stdout.flush()
+                            csv_writer.writerow([iters, gl])
 
-                except tf.errors.OutOfRangeError:
-                    pass
+                            iters += 1
+                            if (iters % self.print_every) == 0:
+                                print('Iteration=%d, G loss=%.5f' %(iters, gl))
+                                sys.stdout.flush()
 
-                if epoch % self.save_every == 0:
+                    except tf.errors.OutOfRangeError:
+                        pass
+
+                    if epoch % self.save_every == 0:
+                        last_checkpoint = g_saver.save(sess, checkpoint_name, global_step=epoch)
+
+                    epoch_loss = epoch_loss/N
+
+                    print('Epoch generator training loss=%.5f' %(epoch_loss))
+                    print('Epoch took %.2f seconds\n' %(time() - start_time))
+                    sys.stdout.flush()
+
+                if epoch % self.save_every != 0:
                     last_checkpoint = g_saver.save(sess, checkpoint_name, global_step=epoch)
-
-                epoch_loss = epoch_loss/N
-
-                print('Epoch generator training loss=%.5f' %(epoch_loss))
-                print('Epoch took %.2f seconds\n' %(time() - start_time))
-                sys.stdout.flush()
-
-            if epoch % self.save_every != 0:
-                last_checkpoint = g_saver.save(sess, checkpoint_name, global_step=epoch)
 
             print('Done.')
             return last_checkpoint
+
 
     def train(self, r, data_path, model_path, batch_size=100, alpha_advers=0.001):
         '''
@@ -246,77 +253,82 @@ class PhIREGANs:
             sys.stdout.flush()
 
             # Start training
-            iters = 0
-            for epoch in range(self.epoch_shift+1, self.epoch_shift+self.N_epochs+1):
-                print('Epoch: '+str(epoch))
-                start_time = time()
+            with open(checkpoint_dir + '/training.csv', 'w', newline='') as csv_file:
+                csv_writer = csv.writer(csv_file)
+                csv_writer.writerow(['i', 'g_loss', 'd_loss', 'TP', 'TN', 'FP', 'FN'])
 
-                # Loop through training data
-                sess.run(init_iter)
-                try:
-                    epoch_g_loss, epoch_d_loss, N = 0, 0, 0
-                    while True:
-                        batch_idx, batch_LR, batch_HR = sess.run([idx, LR_out, HR_out])
-                        N_batch = batch_LR.shape[0]
-                        feed_dict = {x_HR:batch_HR, x_LR:batch_LR}
+                iters = 0
+                for epoch in range(self.epoch_shift+1, self.epoch_shift+self.N_epochs+1):
+                    print('Epoch: '+str(epoch))
+                    start_time = time()
 
-                        # Initial training of the discriminator and generator
-                        sess.run(d_train_op, feed_dict=feed_dict)
-                        sess.run(g_train_op, feed_dict=feed_dict)
+                    # Loop through training data
+                    sess.run(init_iter)
+                    try:
+                        epoch_g_loss, epoch_d_loss, N = 0, 0, 0
+                        while True:
+                            batch_idx, batch_LR, batch_HR = sess.run([idx, LR_out, HR_out])
+                            N_batch = batch_LR.shape[0]
+                            feed_dict = {x_HR:batch_HR, x_LR:batch_LR}
 
-                        # Calculate current losses
-                        gl, dl, p = sess.run([model.g_loss, model.d_loss, model.advers_perf], feed_dict=feed_dict)
-
-                        gen_count = 1
-                        while (dl < 0.460) and gen_count < 2:#30:
-                            # Discriminator did too well -> train the generator extra
-                            sess.run(g_train_op, feed_dict=feed_dict)
-                            gl, dl, p = sess.run([model.g_loss, model.d_loss, model.advers_perf], feed_dict=feed_dict)
-                            gen_count += 1
-
-                        dis_count = 1
-                        while (dl > 0.6) and dis_count < 2:#30:
-                            # Generator fooled the discriminator -> train the discriminator extra
+                            # Initial training of the discriminator and generator
                             sess.run(d_train_op, feed_dict=feed_dict)
+                            sess.run(g_train_op, feed_dict=feed_dict)
+
+                            # Calculate current losses
                             gl, dl, p = sess.run([model.g_loss, model.d_loss, model.advers_perf], feed_dict=feed_dict)
-                            dis_count += 1
 
-                        epoch_g_loss += gl*N_batch
-                        epoch_d_loss += dl*N_batch
-                        N += N_batch
+                            gen_count = 1
+                            while (dl < 0.460) and gen_count < 2:#30:
+                                # Discriminator did too well -> train the generator extra
+                                sess.run(g_train_op, feed_dict=feed_dict)
+                                gl, dl, p = sess.run([model.g_loss, model.d_loss, model.advers_perf], feed_dict=feed_dict)
+                                gen_count += 1
 
-                        iters += 1
-                        if (iters % self.print_every) == 0:
-                            g_cl, g_al = sess.run([model.content_loss, model.g_advers_loss], feed_dict=feed_dict)
+                            dis_count = 1
+                            while (dl > 0.6) and dis_count < 2:#30:
+                                # Generator fooled the discriminator -> train the discriminator extra
+                                sess.run(d_train_op, feed_dict=feed_dict)
+                                gl, dl, p = sess.run([model.g_loss, model.d_loss, model.advers_perf], feed_dict=feed_dict)
+                                dis_count += 1
 
-                            print('Number of generator training steps=%d, Number of discriminator training steps=%d, ' %(gen_count, dis_count))
-                            print('G loss=%.5f, Content component=%.5f, Adversarial component=%.5f' %(gl, np.mean(g_cl), np.mean(g_al)))
-                            print('D loss=%.5f' %(dl))
-                            print('TP=%.5f, TN=%.5f, FP=%.5f, FN=%.5f' %(p[0], p[1], p[2], p[3]))
-                            print('')
-                            sys.stdout.flush()
+                            epoch_g_loss += gl*N_batch
+                            epoch_d_loss += dl*N_batch
+                            N += N_batch
 
-                except tf.errors.OutOfRangeError:
-                    pass
+                            csv_writer.writerow([iters, gl, dl, p[0], p[1], p[2], p[3]])
 
-                if epoch % self.save_every == 0:                    
-                    last_checkpoint = gd_saver.save(sess, checkpoint_name, global_step=epoch)
+                            iters += 1
+                            if (iters % self.print_every) == 0:
+                                g_cl, g_al = sess.run([model.content_loss, model.g_advers_loss], feed_dict=feed_dict)
 
-                g_loss = epoch_g_loss/N
-                d_loss = epoch_d_loss/N
+                                #print('Number of generator training steps=%d, Number of discriminator training steps=%d, ' %(gen_count, dis_count))
+                                print('G loss=%.5f, Content=%.5f, Adversarial=%.5f, D loss=%.5f' % (gl, np.mean(g_cl), np.mean(g_al), dl))
+                                print('TP=%.5f, TN=%.5f, FP=%.5f, FN=%.5f' %(p[0], p[1], p[2], p[3]))
+                                print('')
+                                sys.stdout.flush()
 
-                print('Epoch generator training loss=%.5f, discriminator training loss=%.5f' %(g_loss, d_loss))
-                print('Epoch took %.2f seconds\n' %(time() - start_time))
-                sys.stdout.flush()
+                    except tf.errors.OutOfRangeError:
+                        pass
 
-            if epoch % self.save_every != 0:                    
-                last_checkpoint = gd_saver.save(sess, checkpoint_name, global_step=epoch)
+                    if epoch % self.save_every == 0:                    
+                        last_checkpoint = gd_saver.save(sess, checkpoint_name, global_step=epoch)
+
+                    g_loss = epoch_g_loss/N
+                    d_loss = epoch_d_loss/N
+
+                    print('Epoch generator training loss=%.5f, discriminator training loss=%.5f' %(g_loss, d_loss))
+                    print('Epoch took %.2f seconds\n' %(time() - start_time))
+                    sys.stdout.flush()
+
+                    if epoch % self.save_every != 0:                    
+                        last_checkpoint = gd_saver.save(sess, checkpoint_name, global_step=epoch)
 
         print('Done.')
         return last_checkpoint
 
 
-    def test(self, r, data_path, model_path, batch_size=100, plot_data=False, save_every=1, return_batches=False, return_hr=False):
+    def test(self, r, data_path, model_path, batch_size=100, save_every=1, return_hr=False, only_hr=False):
         '''
             This method loads a previously trained model and runs it on test data
 
@@ -348,49 +360,46 @@ class PhIREGANs:
             idx, LR_out, init_iter = self.make_test_ds(data_path, batch_size)
         print('Done.')
 
-        if not os.path.exists(self.data_out_path):
-                os.makedirs(self.data_out_path)
-
         with tf.keras.backend.get_session() as sess:
             print('Loading saved network ...', end=' ')
             g_saver.restore(sess, model_path)
             print('Done.')
-            
-            with open(self.data_out_path + '/dataSR.npy', 'wb') as out_f:            
-                print('Running test data ...')
-                sess.run(init_iter)
-                try:
-                    for i in count():
-                        if return_hr:
-                            batch_idx, batch_LR, batch_HR = sess.run([idx, LR_out, HR_out])
-                        else:
-                            batch_idx, batch_LR = sess.run([idx, LR_out])
-                        N_batch = batch_LR.shape[0]
+                     
+            print('Running test data ...')
+            sess.run(init_iter)
+            try:
+                for i in count():
+                    if return_hr or only_hr:
+                        batch_idx, batch_LR, batch_HR = sess.run([idx, LR_out, HR_out])
+                    else:
+                        batch_idx, batch_LR = sess.run([idx, LR_out])
+                    N_batch = batch_LR.shape[0]
 
-                        if i % self.print_every == 0:
-                            print('batch ', i)
-                            sys.stdout.flush()
+                    if i % self.print_every == 0:
+                        print('batch ', i)
+                        sys.stdout.flush()
 
-                        if i % save_every != 0:
-                            continue
+                    if i % save_every != 0:
+                        continue
 
-                        feed_dict = {x_LR:batch_LR}
+                    feed_dict = {x_LR:batch_LR}
 
+                    if not only_hr:
                         batch_SR = sess.run(model.x_SR, feed_dict=feed_dict)
+                    else:
+                        batch_SR = batch_HR
 
-                        batch_LR = self.mu_sig[1]*batch_LR + self.mu_sig[0]
-                        batch_SR = self.mu_sig[1]*batch_SR + self.mu_sig[0]
+                    batch_LR = self.mu_sig[1]*batch_LR + self.mu_sig[0]
+                    batch_SR = self.mu_sig[1]*batch_SR + self.mu_sig[0]
 
-                        if return_batches and return_hr:
-                            batch_HR = self.mu_sig[1]*batch_HR + self.mu_sig[0]
-                            yield batch_LR, batch_SR, batch_HR
-                        elif return_batches:
-                            yield batch_LR, batch_SR
-                        else:
-                            np.save(out_f, batch_SR, allow_pickle=False)
+                    if return_hr:
+                        batch_HR = self.mu_sig[1]*batch_HR + self.mu_sig[0]
+                        yield batch_LR, batch_SR, batch_HR
+                    else:
+                        yield batch_LR, batch_SR
 
-                except tf.errors.OutOfRangeError:
-                    pass
+            except tf.errors.OutOfRangeError:
+                pass
 
         print('Done.')
 
@@ -431,13 +440,14 @@ class PhIREGANs:
         data_LR = tf.reshape(data_LR, (h_LR, w_LR, c))
         data_HR = tf.reshape(data_HR, (h_HR, w_HR, c))
 
-        if False:
-            u, std = [275.37314, 1.8918975e-08, 2.3000993e-07], [16.993176, 2.1903368e-05, 4.4884804e-05]
-            data_LR = (data_LR - u) / std
-            data_HR = (data_HR - u) / std
+        if True:
+            y = data_LR
+            y = tf.math.expm1(tf.math.abs(y)) * tf.math.sign(y)
+            data_LR = tf.math.sign(y) * tf.math.log1p(0.2 * tf.math.abs(y))
 
-            data_LR = tf.math.sign(data_LR) * tf.math.log1p(tf.math.abs(data_LR))
-            data_HR = tf.math.sign(data_HR) * tf.math.log1p(tf.math.abs(data_HR))
+            y = data_HR
+            y = tf.math.expm1(tf.math.abs(y)) * tf.math.sign(y)
+            data_HR = tf.math.sign(y) * tf.math.log1p(0.2 * tf.math.abs(y))
 
         if mu_sig is not None:
             data_LR = (data_LR - mu_sig[0])/mu_sig[1]
@@ -474,10 +484,10 @@ class PhIREGANs:
         data_LR = tf.decode_raw(example['data_LR'], tf.float32)
         data_LR = tf.reshape(data_LR, (h_LR, w_LR, c))
 
-        if False:
-            u, std = [275.37314, 1.8918975e-08, 2.3000993e-07], [16.993176, 2.1903368e-05, 4.4884804e-05]
-            data_LR = (data_LR - u) / std
-            data_LR = tf.math.sign(data_LR) * tf.math.log1p(tf.math.abs(data_LR))
+        if True:
+            y = data_LR
+            y = tf.math.expm1(tf.math.abs(y)) * tf.math.sign(y)            
+            data_LR = tf.math.sign(y) * tf.math.log1p(0.2 * tf.math.abs(y))
 
         if mu_sig is not None:
             data_LR = (data_LR - mu_sig[0])/mu_sig[1]

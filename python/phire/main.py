@@ -10,16 +10,15 @@ module_wrapper._PER_MODULE_WARNING_LIMIT = 0
 
 def main():
     
-    data_type = 'resnet-small-16c'
+    data_type = 'resnet-small-16c-2xdata-pre2'
     compression='ZLIB'
     data_path_train = sorted(glob('/data/stengel/HR/patches_train_1979_1990.*.tfrecords'))
-    data_path_test = None #sorted(glob('/data/stengel/whole_images/stengel_eval_1995_1999.*.tfrecords'))
     checkpoint = None
     r = [2,2]
 
-    encoder_path = '/data/repr_models_HR/resnet-small-16c_2021-06-22_0127/epoch20/'
+    encoder_path = '/data/repr_models_HR/resnet-small-16c-2xdata-pre2_2021-07-07_1205/epoch22/'
     encoder_layer = -1
-    loss_scale = 0.15
+    loss_scale = 0.18
 
     #mu_sig = [[275.28983, 1.8918675e-08, 2.3001131e-07], [16.951859, 2.19138e-05, 4.490682e-05]]
     # log values:
@@ -45,7 +44,7 @@ def main():
     
     # Pretraining
     if True:
-        gan.N_epochs = 10
+        gan.N_epochs = 5
         checkpoint = gan.pretrain(
             r=r,
             data_path=data_path_train,
@@ -76,15 +75,6 @@ def main():
             batch_size=64
         )
         print(checkpoint)
-
-    # Inference
-    if False:
-        gan.test(r=r,
-            data_path=data_path_test,
-            model_path=checkpoint,
-            batch_size=32,
-            save_every=200
-        )
 
 
 if __name__ == '__main__':

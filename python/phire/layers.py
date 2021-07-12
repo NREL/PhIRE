@@ -2,12 +2,117 @@ import tensorflow as tf
 import numpy as np
 
 
-def conv_layer_2d(x, filter_shape, stride, trainable=True):
+def gaussian_blur(x, kernel_size, sigma):
+    if kernel_size % 2 == 1:
+        kernel_x = tf.range(-(kernel_size//2), kernel_size//2 + 1, dtype=tf.float32)
+    else:
+        a = tf.range(-kernel_size//2, 0, dtype=tf.float32) 
+        b = tf.range(1, kernel_size//2 + 1, dtype=tf.float32)
+        kernel_x = tf.concat([a,b], axis=0)
+
+    kernel_1d = tf.nn.softmax(-kernel_x**2 / (2.0 * sigma**2))
+    kernel_2d = tf.matmul(kernel_1d[:, None], kernel_1d[None, :])
+
+    C = x.get_shape()[-1]
+    kernel = tf.tile(kernel_2d[:,:,None,None], (1,1,C,1))
+    kernel = tf.stop_gradient(kernel)
+
+    x = tf.pad(x, [[0,0], [kernel_size//2, kernel_size//2], [kernel_size//2, kernel_size//2], [0,0]], 'SYMMETRIC')
+    return tf.nn.depthwise_conv2d(x, kernel, (1,1,1,1), 'VALID')
+
+
+@tf.custom_gradient
+def blur_gradient(x, sigma):
+    
+    def grad(dy):
+        g = gaussian_blur(dy, 4, sigma)
+        return g, 0.0  # no gradient for sigma
+
+    return x, grad
+
+
+def checkboard_free_xavier_initializer(r):
+    xavier = tf.contrib.layers.xavier_initializer()
+    def init(shape, dtype, partition_info):
+        O = shape[-1] // (r**2)
+        weights = xavier(shape, dtype)
+        W_0 = weights[:,:,:,0:O]
+
+        return tf.tile(W_0, [1,1,1,r**2])
+
+    return init
+
+
+def nn_resize_conv(x, filter_shape, r, stride, trainable=True):
+    h,w = x.get_shape()[1], x.get_shape()[2]
+    if h.value is None:
+        h = tf.shape(x)[1]
+    if w.value is None:
+        w = tf.shape(x)[2]
+
+    x = tf.image.resize(x, (h*r, w*r), 'nearest')
+
     W = tf.get_variable(
         name='weight',
         shape=filter_shape,
         dtype=tf.float32,
-        initializer=tf.contrib.layers.xavier_initializer(),#tf.contrib.layers.variance_scaling_initializer(),
+        initializer=tf.contrib.layers.xavier_initializer(),
+        trainable=trainable)
+
+    b = tf.get_variable(
+        name='bias',
+        shape=[filter_shape[-1]],
+        dtype=tf.float32,
+        initializer=tf.constant_initializer(0.0),
+        trainable=trainable)
+    
+    x = tf.nn.conv2d(
+        input=x,
+        filter=W,
+        strides=[1, stride, stride, 1],
+        padding='SAME')
+    x = tf.nn.bias_add(x, b)
+
+    return x
+
+
+def subpixel_conv(x, filter_shape, r, stride, trainable=True):
+    K1,K2,I,O = filter_shape
+    
+    W = tf.get_variable(
+        name='weight',
+        shape=(K1,K2,I, O * r**2),
+        dtype=tf.float32,
+        initializer=checkboard_free_xavier_initializer(r),
+        trainable=trainable)
+
+    b = tf.get_variable(
+        name='bias',
+        shape=[O * r**2],
+        dtype=tf.float32,
+        initializer=tf.constant_initializer(0.0),
+        trainable=trainable)
+    
+    x = tf.nn.conv2d(
+        input=x,
+        filter=W,
+        strides=[1, stride, stride, 1],
+        padding='SAME')
+    
+    x = tf.nn.bias_add(x, b)
+    x = tf.depth_to_space(x, r)
+
+    return x
+
+
+def conv_layer_2d(x, filter_shape, stride, trainable=True, kernel_initializer=None):
+    kernel_init = kernel_initializer or tf.contrib.layers.xavier_initializer()
+
+    W = tf.get_variable(
+        name='weight',
+        shape=filter_shape,
+        dtype=tf.float32,
+        initializer=kernel_init,
         trainable=trainable)
     b = tf.get_variable(
         name='bias',
@@ -15,16 +120,20 @@ def conv_layer_2d(x, filter_shape, stride, trainable=True):
         dtype=tf.float32,
         initializer=tf.constant_initializer(0.0),
         trainable=trainable)
-    x = tf.nn.bias_add(tf.nn.conv2d(
+
+    x = tf.nn.conv2d(
         input=x,
         filter=W,
         strides=[1, stride, stride, 1],
-        padding='SAME'), b)
+        padding='SAME')
+    x = tf.nn.bias_add(x, b)
 
     return x
 
+
 def deconv_layer_2d(x, filter_shape, output_shape, stride, trainable=True):
     x = tf.pad(x, [[0,0], [3,3], [3,3], [0,0]], mode='reflect')
+    
     W = tf.get_variable(
         name='weight',
         shape=filter_shape,
@@ -37,22 +146,23 @@ def deconv_layer_2d(x, filter_shape, output_shape, stride, trainable=True):
         dtype=tf.float32,
         initializer=tf.constant_initializer(0.0),
         trainable=trainable)
-    x = tf.nn.bias_add(tf.nn.conv2d_transpose(
+
+    x = tf.nn.conv2d_transpose(
         value=x,
         filter=W,
         output_shape=output_shape,
         strides=[1, stride, stride, 1],
-        padding='SAME'), b)
+        padding='SAME')
+    x = tf.nn.bias_add(x, b)
 
     return x[:, 3:-3, 3:-3, :]
 
-def flatten_layer(x):
-    input_shape = x.get_shape().as_list()
-    dim = input_shape[1] * input_shape[2] * input_shape[3]
-    transposed = tf.transpose(x, (0, 3, 1, 2))
-    x = tf.reshape(transposed, [-1, dim])
 
+def flatten_layer(x):
+    H,W,C = x.get_shape()[1], x.get_shape()[2], x.get_shape()[3]
+    x = tf.reshape(x, [-1, H*W*C])
     return x
+
 
 def dense_layer(x, out_dim, trainable=True):
     in_dim = x.get_shape().as_list()[-1]
@@ -69,22 +179,6 @@ def dense_layer(x, out_dim, trainable=True):
         initializer=tf.constant_initializer(0.0),
         trainable=trainable)
     x = tf.add(tf.matmul(x, W), b)
-
-    return x
-
-def pixel_shuffle_layer(x, r, n_split):
-    def PS(x, r):
-        N, h, w = tf.shape(x)[0], tf.shape(x)[1], tf.shape(x)[2]
-        x = tf.reshape(x, (N, h, w, r, r))
-        x = tf.transpose(x, (0, 1, 2, 4, 3))
-        x = tf.split(x, h, 1)
-        x = tf.concat([tf.squeeze(x_) for x_ in x], 2)
-        x = tf.split(x, w, 1)
-        x = tf.concat([tf.squeeze(x_) for x_ in x], 2)
-        x = tf.reshape(x, (N, h*r, w*r, 1))
-
-    xc = tf.split(x, n_split, 3)
-    x = tf.concat([PS(x_, r) for x_ in xc], 3)
 
     return x
 
