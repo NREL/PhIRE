@@ -403,6 +403,25 @@ class PhIREGANs:
 
         print('Done.')
 
+
+    def iterate_data(self, data_path, batch_size):
+        idx, LR_out, HR_out, init_iter = self.make_train_ds(data_path, batch_size=batch_size, shuffle=False)
+
+        with tf.Session() as sess:
+            sess.run(init_iter)
+
+            try:
+                while True:
+                    batch_idx, batch_LR, batch_HR = sess.run([idx, LR_out, HR_out])
+                    batch_LR = self.mu_sig[1]*batch_LR + self.mu_sig[0]
+                    batch_HR = self.mu_sig[1]*batch_HR + self.mu_sig[0]
+
+                    yield batch_idx, batch_LR, batch_HR
+
+            except tf.errors.OutOfRangeError:
+                pass
+
+
     def _parse_train_(self, serialized_example, mu_sig=None):
         '''
             Parser data from TFRecords for the models to read in for (pre)training
@@ -497,7 +516,6 @@ class PhIREGANs:
 
     def make_train_ds(self, data_path, batch_size, shuffle=True):
         ds = tf.data.TFRecordDataset(data_path, self.compression, num_parallel_reads=4)
-        print(self.compression)
         ds = ds.map(lambda xx: self._parse_train_(xx, self.mu_sig))
 
         if shuffle:
