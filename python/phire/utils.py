@@ -1,6 +1,7 @@
 import numpy as np
 import tensorflow as tf
-#import matplotlib.pyplot as plt
+import xarray as xr
+
 
 class Welford:
 
@@ -138,3 +139,27 @@ def generate_TFRecords(filename, data, mode='test', K=None):
 
             example = tf.train.Example(features=features)
             writer.write(example.SerializeToString()) 
+
+
+def lanczos_weights(window_size, cutoff):
+    n = (window_size+1) // 2
+    k = np.arange(-n, n+1)
+    f_N = 1 / cutoff
+
+    with np.errstate(divide='ignore', invalid='ignore'):  # k=0 results in div by zero
+        w_k = np.sin(2*np.pi * k * f_N) / (np.pi * k)
+        sigma_factor = np.sin(np.pi*k / n) * n / (np.pi*k)
+        weights = w_k * sigma_factor
+
+    # for k = 0
+    weights[n] = 2 * f_N
+
+    return weights[1:-1]
+
+
+def lanczos_filter_xr(arr, window_size, cutoff, dim, center=False):
+    weights = lanczos_weights(window_size, cutoff)
+    def filter_(x, axis=None):
+        return np.sum(x*weights, axis=axis)
+
+    return arr.rolling(dim={dim: window_size}, center=center).reduce(filter_)
