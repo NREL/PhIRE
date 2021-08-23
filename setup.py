@@ -8,13 +8,20 @@ console_scripts = [
     'phire-data=phire.era5_to_tfrecords:main'
 ]
 
+
+package_data = {
+    'phire.jetstream': ['data/*.csv']
+}
+
 packages = find_packages('python')
+
 
 setup(
     name='PhIRE',
     version='2.0',
     packages=packages,
     package_dir = {'': 'python'},
+    package_data=package_data,
     entry_points = {
         'console_scripts': console_scripts
     }
