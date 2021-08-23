@@ -141,6 +141,39 @@ def generate_TFRecords(filename, data, mode='test', K=None):
             writer.write(example.SerializeToString()) 
 
 
+class CoordTransform:
+
+    def __init__(self, H, W, lat_up = 90, lat_down = -90, lon_left = 0, lon_right = 360):
+        self.H = H
+        self.W = W
+   
+        self.lat_up = lat_up
+        self.lat_down = lat_down
+        self.lon_left = lon_left
+        self.lon_right = lon_right
+
+        self.lat_H = self.lat_up - self.lat_down
+        self.lon_W = self.lon_right - self.lon_left
+
+        assert self.lat_H > 0
+        assert self.lon_W > 0
+
+
+    def to_yx(self, lat, lon):
+        lat = np.asarray(lat, dtype=np.float32)
+        lon = np.asarray(lon, dtype=np.float32)
+
+        y = self.H * (90-lat) / self.lat_H
+        x = self.W * lon/self.lon_W
+        return y,x
+
+
+    def to_latlon(self, y, x):
+        lat = y/self.H * self.lat_H - 90
+        lon = x/self.W * self.lon_W
+        return lat,lon
+
+
 def lanczos_weights(window_size, cutoff):
     n = (window_size+1) // 2
     k = np.arange(-n, n+1)
