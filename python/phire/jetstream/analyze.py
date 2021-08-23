@@ -6,7 +6,7 @@ from phire.utils import lanczos_filter_xr
 
 def aggregate_dataset(filename):
     ds = xr.open_dataset(filename, engine='cfgrib')
-    daily_means = ds.u.coarsen(time=24).mean()
+    daily_means = ds.u.coarsen(time=24, latitude=8, longitude=8).mean()
     averaged = daily_means.mean(dim=['isobaricInhPa', 'longitude'])
     return averaged
 
