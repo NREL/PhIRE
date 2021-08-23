@@ -1,4 +1,5 @@
 import tensorflow as tf
+import json
 
 
 def swish(x):
@@ -8,11 +9,23 @@ def swish(x):
 def L2(l2=1e-2):
     return tf.keras.regularizers.l2(l2)
 
-def load_encoder(path, layer_idx=-1):
+def load_encoder(path, layer_idx=-1, input_shape=None):
     with open(path + '/encoder.json', 'r') as f:
         encoder_org = tf.keras.models.model_from_json(f.read(), {'swish': swish, 'L2': L2})
-    
-    encoder = tf.keras.Model(encoder_org.input, encoder_org.layers[layer_idx].output, trainable=False)
+
+    if input_shape:
+        mdef = json.loads(encoder_org.to_json())
+        mdef['config']['layers'][0]['config']['batch_input_shape'] = list((None,) + input_shape)
+
+        enc_tmp = tf.keras.models.model_from_json(json.dumps(mdef), {'swish': swish, 'L2': L2})
+
+        input_l = enc_tmp.input
+        out_l = enc_tmp.layers[layer_idx].output
+    else:
+        input_l = encoder_org.input
+        out_l = encoder_org.layers[layer_idx].output
+
+    encoder = tf.keras.Model(input_l, out_l, trainable=False)
     encoder.summary()
     encoder.load_weights(path + '/encoder_weights.hdf5', by_name=True)
 
