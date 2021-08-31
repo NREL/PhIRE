@@ -4,27 +4,22 @@ from .PhIREGANs import *
 from .encoder import load_encoder
 from glob import glob
 
-from tensorflow.python.util import module_wrapper
-module_wrapper._PER_MODULE_WARNING_LIMIT = 0
-
 
 def main():
     
-    data_type = 'resnet-small-16c-2xdata-pre2'
+    run_name = 'mse'
     compression='ZLIB'
-    data_path_train = sorted(glob('/data/stengel/HR/patches_train_1979_1990.*.tfrecords'))
+    infiles = sorted(glob('/data/sebastian/sr/sr_train_1979_1998.*.tfrecords'))
     checkpoint = None
     r = [2,2]
 
-    encoder_path = '/data/repr_models_HR/resnet-small-16c-2xdata-pre2_2021-07-07_1205/epoch22/'
+    encoder_path = None
     encoder_layer = -1
-    loss_scale = 0.18
+    loss_scale = 1.0
 
-    #mu_sig = [[275.28983, 1.8918675e-08, 2.3001131e-07], [16.951859, 2.19138e-05, 4.490682e-05]]
-    # log values:
-    mu_sig = [[0.008315503, 0.0028762482], [0.5266841, 0.5418187]]
+    mu_sig = None  # data is already log1p- and z-normalized
 
-    ################### ###################################
+    #######################################################
 
     if encoder_path:
         encoder = lambda: load_encoder(encoder_path, encoder_layer)
@@ -32,7 +27,7 @@ def main():
         encoder = None
 
     gan = PhIREGANs(
-        data_type=data_type, 
+        data_type=run_name, 
         mu_sig=mu_sig,
         print_every=50,
         N_epochs=1,
@@ -47,11 +42,11 @@ def main():
         gan.N_epochs = 5
         checkpoint = gan.pretrain(
             r=r,
-            data_path=data_path_train,
+            data_path=infiles,
             model_path=checkpoint,
-            batch_size=128
+            batch_size=64
         )
-        print(checkpoint)
+        print('pretraining done!')
 
     # Training
     if True:
@@ -60,7 +55,7 @@ def main():
         gan.epoch_shift = 0
         checkpoint = gan.train(
             r=r,
-            data_path=data_path_train,
+            data_path=infiles,
             model_path=checkpoint,
             batch_size=64
         )
@@ -70,11 +65,10 @@ def main():
         gan.epoch_shift = 15
         checkpoint = gan.train(
             r=r,
-            data_path=data_path_train,
+            data_path=infiles,
             model_path=checkpoint,
             batch_size=64
         )
-        print(checkpoint)
 
 
 if __name__ == '__main__':

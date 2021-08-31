@@ -170,12 +170,6 @@ class SR_NETWORK(object):
         else:
             diff = x_HR - x_SR
 
-        beta = 1.5
-        alpha_tv = 0#5e-3
-        img_grad_y_l2_sqr = tf.math.squared_difference(x_SR[:, 1:, :-1, :], x_SR[:,:-1,:-1,:])
-        img_grad_x_l2_sqr = tf.math.squared_difference(x_SR[:, :-1, 1:, :], x_SR[:,:-1,:-1,:])
-        tv_reg = tf.math.reduce_mean((img_grad_y_l2_sqr + img_grad_x_l2_sqr)**(beta/2), axis=[1,2,3])
-
         content_loss = self.alpha_content*tf.reduce_mean(diff**2, axis=[1, 2, 3])
 
         if isGAN:
@@ -189,10 +183,10 @@ class SR_NETWORK(object):
                            tf.reduce_mean(tf.cast(tf.sigmoid(d_SR) > 0.5, tf.float32)), # % false positive
                            tf.reduce_mean(tf.cast(tf.sigmoid(d_HR) < 0.5, tf.float32))] # % false negative
 
-            g_loss = tf.reduce_mean(content_loss) + self.alpha_advers*tf.reduce_mean(g_advers_loss) #+ alpha_tv*tf.reduce_mean(tv_reg)
+            g_loss = tf.reduce_mean(content_loss) + self.alpha_advers*tf.reduce_mean(g_advers_loss)
             d_loss = tf.reduce_mean(d_advers_loss)
 
             return g_loss, d_loss, advers_perf, content_loss, g_advers_loss
         else:
-            return tf.reduce_mean(content_loss) #+ alpha_tv*tf.reduce_mean(tv_reg)
+            return tf.reduce_mean(content_loss)
     

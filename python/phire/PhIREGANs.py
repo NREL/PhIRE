@@ -87,9 +87,6 @@ class PhIREGANs:
         
         tf.reset_default_graph()
         
-        if self.mu_sig is None:
-            self.set_mu_sig(data_path, batch_size)
-        
         self.set_LR_data_shape(data_path)
         h, w, C = self.LR_data_shape
 
@@ -202,9 +199,6 @@ class PhIREGANs:
         tf.reset_default_graph()
 
         assert model_path is not None, 'Must provide path for pretrained model'
-        
-        if self.mu_sig is None:
-            self.set_mu_sig(data_path, batch_size)
         
         self.set_LR_data_shape(data_path)
         h, w, C = self.LR_data_shape
@@ -459,7 +453,7 @@ class PhIREGANs:
         data_LR = tf.reshape(data_LR, (h_LR, w_LR, c))
         data_HR = tf.reshape(data_HR, (h_HR, w_HR, c))
 
-        if True:
+        if False:
             y = data_LR
             y = tf.math.expm1(tf.math.abs(y)) * tf.math.sign(y)
             data_LR = tf.math.sign(y) * tf.math.log1p(0.2 * tf.math.abs(y))
@@ -503,7 +497,7 @@ class PhIREGANs:
         data_LR = tf.decode_raw(example['data_LR'], tf.float32)
         data_LR = tf.reshape(data_LR, (h_LR, w_LR, c))
 
-        if True:
+        if False:
             y = data_LR
             y = tf.math.expm1(tf.math.abs(y)) * tf.math.sign(y)            
             data_LR = tf.math.sign(y) * tf.math.log1p(0.2 * tf.math.abs(y))
@@ -541,47 +535,6 @@ class PhIREGANs:
 
         return idx, LR_out, init_iter
 
-
-    def set_mu_sig(self, data_path, batch_size=1):
-        '''
-            Compute mean (mu) and standard deviation (sigma) for each data channel
-            inputs:
-                data_path - (string) path to the tfrecord for the training data
-                batch_size - number of samples to grab each interation
-
-            outputs:
-                sets self.mu_sig
-        '''
-        print('Loading data ...', end=' ')
-        dataset = tf.data.TFRecordDataset(data_path)
-        dataset = dataset.map(self._parse_train_).batch(batch_size)
-
-        iterator = dataset.make_one_shot_iterator()
-        _, _, HR_out = iterator.get_next()
-
-        with tf.Session() as sess:
-            N, mu, sigma = 0, 0, 0
-            try:
-                while True:
-                    data_HR = sess.run(HR_out)
-
-                    N_batch, h, w, c = data_HR.shape
-                    N_new = N + N_batch
-
-                    mu_batch = np.mean(data_HR, axis=(0, 1, 2))
-                    sigma_batch = np.var(data_HR, axis=(0, 1, 2))
-
-                    sigma = (N/N_new)*sigma + (N_batch/N_new)*sigma_batch + (N*N_batch/N_new**2)*(mu - mu_batch)**2
-                    mu = (N/N_new)*mu + (N_batch/N_new)*mu_batch
-
-                    N = N_new
-
-            except tf.errors.OutOfRangeError:
-                pass
-
-        self.mu_sig = [mu, np.sqrt(sigma)]
-
-        print('Done.')
 
     def set_LR_data_shape(self, data_path):
         '''
