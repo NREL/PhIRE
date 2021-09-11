@@ -7,10 +7,12 @@ from glob import glob
 from pathlib import Path
 from datetime import datetime
 import matplotlib.pyplot as plt
+import random
+import pandas as pd
 
 from .skeleton import load_model, load_encoder
 from .resnet import Resnet101, ResnetSmall, Resnet18
-from .data_tool import parse_samples
+from ..data_tool import parse_samples
 from .callbacks import CSVLogger, ModelSaver
 
 
@@ -26,7 +28,7 @@ def parse_train(serialized, append_latlon=False, discount=False, tmax=None):
     patch2 = tf.io.decode_raw(examples['patch2'], tf.float32)
     patch2 = tf.reshape(patch2, (-1, H,W,C))
 
-    labels = tf.one_hot(examples['label'] - 1, tf.cast(T_max - 1, tf.int32))
+    labels = tf.one_hot(examples['label'] - 1, tf.cast(T_max, tf.int32))
 
     if append_latlon:
         lat_cos = tf.math.cos(2*np.pi * tf.linspace(examples['lat_start'], examples['lat_end'], H) / 180)
@@ -58,7 +60,7 @@ def parse_train(serialized, append_latlon=False, discount=False, tmax=None):
 def make_train_ds(files, batch_size, n_shuffle=1000, compression_type='ZLIB', append_latlon=False, discount=False, tmax=None):
     assert files
 
-    ds = tf.data.TFRecordDataset(files, num_parallel_reads=4, compression_type=compression_type)
+    ds = tf.data.TFRecordDataset(files, num_parallel_reads=3, compression_type=compression_type)
     
     if n_shuffle:
         ds = ds.shuffle(n_shuffle)
@@ -69,23 +71,28 @@ def make_train_ds(files, batch_size, n_shuffle=1000, compression_type='ZLIB', ap
     ds = ds.filter(lambda X, y, weight: tf.math.reduce_sum(y) == 1)
     ds = ds.batch(batch_size)
     
+    # not required anymore
+    #ds = ds.map(lambda X,y,w: (tf.nest.map_structure(remap, X), y, w))
+
     return ds.prefetch(None)
 
 
 class Train:
 
     def __init__(self):
-        self.data_path_train = sorted(glob('/data2/stengel/HR/rplearn_train_1979_1990.*.tfrecords'))
-        self.data_path_eval = sorted(glob('/data2/stengel/HR/rplearn_eval_2000_2002.*.tfrecords'))
+        paths = glob('/data2/rplearn/rplearn_train_1979_1998.*.tfrecords')
+        self.data_path_train = paths
+        
+        self.data_path_eval = glob('/data2/rplearn/rplearn_eval_2000_2005.*.tfrecords')
         self.val_freq = 3
-        self.n_classes = 31
+        self.n_classes = 23
 
         self.resnet = ResnetSmall((160,160,2), self.n_classes, output_logits=False, shortcut='projection')
         #resnet = Resnet18((160,160,2), 16, output_logits=False, shortcut='projection')
         #resnet = Resnet101((160,160,2), 16, output_logits=False)
 
-        self.model_dir = Path('/data/repr_models_HR')
-        self.prefix = 'resnet-small-31c'
+        self.model_dir = Path('/data/final_models')
+        self.prefix = 'rnet-small-23c'
         self.description = '''
         # Model:
         Our small resnet architecture, 4 blocks with filters [16,32,64,128] and 6 residual blocks in each.
@@ -99,9 +106,12 @@ class Train:
         initializer: he-normal
 
         # Data:
-        full-res 160x160 patches with 4d lookahead
-        20 patches per image, 1979-1990 (12 years) -> 0.7 million patches (we reduced this artificially for comparability)            
-        eval on 2000-2002
+        full-res 160x160 patches with 3d lookahead
+        31 patches per image, 1979-1998 (20 years) -> 1.8 million patches (14.1k batches)
+        (full dataset size is 42 patches -> 2.45 million patches)            
+        eval on 2000-2005
+
+        normalized with f(x) = sign(x) = ln(1 + 0.2*x)
 
         # Input vars:
         divergence (log1p), relative_vorticity (log1p)
@@ -110,6 +120,7 @@ class Train:
         SGD with momentum=0.9
         lr gets reduced on plateau by one order of magnitude, starting with 1e-1
 
+        pretraining with reduced dataset set size (2000 batches -> 256k) is neccessary and done for 20 epochs
         '''
 
         self.start_time = datetime.today()
@@ -130,9 +141,12 @@ class Train:
 
 
     def setup_ds(self):
-        self.train_ds = make_train_ds(self.data_path_train, 128, n_shuffle=2000, tmax=self.n_classes+1)
-        self.train_ds = self.train_ds.take(5400)  # for comparability
-        self.eval_ds = make_train_ds(self.data_path_eval, 128, n_shuffle=None, tmax=self.n_classes+1)
+        train_ds = make_train_ds(self.data_path_train, 128, n_shuffle=2000, tmax=self.n_classes)
+        
+        self.small_train_ds = train_ds.take(2000)
+        self.train_ds = train_ds #train_ds.take(2*5400)  # for comparability
+
+        self.eval_ds = make_train_ds(self.data_path_eval, 128, n_shuffle=None, tmax=self.n_classes)
 
 
     def train(self):
@@ -142,7 +156,7 @@ class Train:
         csv_logger = CSVLogger(self.checkpoint_dir / 'training.csv', keys=['lr', 'loss', 'categorical_accuracy', 'val_loss', 'val_categorical_accuracy'], append=True, separator=' ')
         saver = ModelSaver(self.checkpoint_dir)
         lr_reducer = tf.keras.callbacks.ReduceLROnPlateau('loss', min_delta=4e-2, min_lr=1e-5, patience=8)
-        callbacks = [saver, csv_logger]
+        callbacks = [csv_logger]
 
         optimizer = tf.keras.optimizers.SGD(momentum=0.9, clipnorm=5.0)
 
@@ -153,12 +167,25 @@ class Train:
         )    
 
         self.resnet.model.optimizer.learning_rate.assign(1e-1)
-        callbacks += [lr_reducer]  # only activate now
+        
+        # pretraining
+        self.resnet.model.fit(
+            self.small_train_ds, 
+            validation_data=self.eval_ds, 
+            validation_freq=self.val_freq, 
+            epochs=20, 
+            callbacks=callbacks,
+            verbose=1,
+            initial_epoch=0
+        )
+        
+        # training
+        callbacks += [lr_reducer, saver]  # only activate now
         self.resnet.model.fit(
             self.train_ds, 
             validation_data=self.eval_ds, 
             validation_freq=self.val_freq, 
-            epochs=110, 
+            epochs=60, 
             callbacks=callbacks,
             verbose=2,
             initial_epoch=0
@@ -166,6 +193,7 @@ class Train:
 
 
     def run(self):
+        print('TRAINING DATASET NOT COMPLETE, MOVE FROM /data TO /data2!')
         self.setup_dir()
         self.train()
 
@@ -177,11 +205,32 @@ class Train:
         model.compile(
             loss=loss,
             metrics='categorical_accuracy'
-        )  
-
+        )
 
         ds = self.train_ds if on_train else self.eval_ds
         return model.evaluate(ds, verbose=1)
+
+    
+    def evaluate_all(self, dir, on_train=False):
+
+        def extract_epoch(path):
+            return int(os.path.relpath(path, dir)[5:])
+
+        # find dirs and sort by integers (not lexicographically)
+        model_dirs = glob(dir + '/epoch*/')      
+        model_dirs = sorted(model_dirs, key=extract_epoch)
+        
+        results = {}
+
+        for mdir in model_dirs:
+            print(f'evaluating {mdir}')
+            epoch = extract_epoch(mdir)
+            results[epoch] = self.evaluate_single(mdir)
+
+        df = pd.DataFrame.from_dict(results, orient='index')
+        df.columns = ['loss', 'accuracy']
+        df.index.name = 'epoch'
+        df.to_csv(dir + '/evaluation.csv')
 
 
     def evaluate_loss(self, dir, on_train, layer=-1):
@@ -205,7 +254,7 @@ class Train:
         model = tf.keras.Model(inputs={'img1': img1, 'img2': img2}, outputs=l2)
 
         ds = self.train_ds if on_train else self.eval_ds
-        samples = {i: [] for i in range(self.tmax)}
+        samples = {i: [] for i in range(self.n_classes)}
 
         for X,y,weight in ds.take(200):
             preds = model(X)
@@ -214,11 +263,11 @@ class Train:
             for pred, label in zip(preds, labels):
                 samples[label].append(pred)
 
-        means = [np.mean(samples[i]) for i in range(self.tmax)]
-        stds = [np.std(samples[i]) for i in range(self.tmax)]
+        means = [np.mean(samples[i]) for i in range(self.n_classes)]
+        stds = [np.std(samples[i]) for i in range(self.n_classes)]
         
         plt.figure()
-        plt.errorbar(np.arange(self.tmax), means, stds, marker='^')
+        plt.errorbar(np.arange(self.n_classes), means, stds, marker='^')
         plt.savefig(f'layer{layer}_loss.png')
         plt.close()
         
@@ -242,19 +291,21 @@ class Train:
 
             return grad
 
-        checkboard = np.asarray([[1, 0.5], [-0.5, 0]])
-        noisy = img2 + 2 * np.tile(checkboard, (img2.shape[0]//2,img2.shape[0]//2))[:,:,None]
+        checkboard = np.asarray([[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
+        noisy = img2 + 0.8 * np.tile(checkboard, (img2.shape[0]//4,img2.shape[0]//4))[:,:,None]
         calc_and_save_grad(noisy, 'grad_checkboard')
 
-        calc_and_save_grad(img2, f'grad')
+        x = noisy
+        for i in range(20):
+            g = calc_and_save_grad(x, f'grad_step{i}_')
+            print(g)
+            x = x - 10000*g
+            plt.imsave(f'x{i}_0.png', x[..., 0])
 
 
 def main():
     #Train().run()
-    #Train().evaluate_single('/data/repr_models_HR/resnet-small-16c_2021-06-22_0127/epoch20/', on_train=False)
-    #Train().evaluate_loss('/data/repr_models_HR/resnet-small-16c_2021-06-22_0127/epoch20/', on_train=True)
-    #Train().evaluate_loss(None, on_train=True, layer='mse')
-    Train().check_gradient('/data/repr_models_HR/resnet-small-16c_2021-06-22_0127/epoch20/', with_checkboard=True)
+    Train().evaluate_all('/data/final_rp_models/rnet-small-23c_2021-09-09_1831')
 
 if __name__ == '__main__':
     main()
