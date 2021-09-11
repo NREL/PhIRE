@@ -13,11 +13,11 @@ if __name__ == '__main__':
     plt.figure(figsize=(7,3.5))
 
     with sns.color_palette('deep'):
-        plt.bar(data['Unnamed: 0'].values[::4] + 8e-5, height=vort, width=8e-5, label='Vorticity')
-        plt.bar(data['Unnamed: 0'].values[::4] + 8e-5, height=div, width=8e-5, label='Divergence')
+        plt.bar(data['Unnamed: 0'].values[::4] + 8e-5, height=vort, width=8e-5, label='vorticity')
+        plt.bar(data['Unnamed: 0'].values[::4] + 8e-5, height=div, width=8e-5, label='divergence')
 
-    plt.ylabel('Count')
+    plt.ylabel('count')
     plt.yscale('log')
-    plt.xlabel('Value')
+    plt.xlabel('value')
     plt.legend()
-    plt.savefig('histogram.pdf')
+    plt.savefig('histogram.pdf', bbox_inches='tight')
