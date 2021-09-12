@@ -1,4 +1,6 @@
 import os
+
+from numpy.core.defchararray import asarray
 #os.environ["CUDA_VISIBLE_DEVICES"]="-1" 
 
 import tensorflow as tf
@@ -9,6 +11,7 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import random
 import pandas as pd
+import scipy.optimize
 
 from .skeleton import load_model, load_encoder
 from .resnet import Resnet101, ResnetSmall, Resnet18
@@ -126,7 +129,8 @@ class Train:
         self.start_time = datetime.today()
         self.checkpoint_dir = self.model_dir / '{}_{}'.format(self.prefix, self.start_time.strftime('%Y-%m-%d_%H%M'))
 
-        self.setup_ds()
+        self.train_ds = None
+        self.eval_ds = None
 
 
     def setup_dir(self):
@@ -140,16 +144,18 @@ class Train:
             self.resnet.summary(f)
 
 
-    def setup_ds(self):
-        train_ds = make_train_ds(self.data_path_train, 128, n_shuffle=2000, tmax=self.n_classes)
+    def setup_ds(self, tmax):
+        train_ds = make_train_ds(self.data_path_train, 128, n_shuffle=2000, tmax=tmax)
         
         self.small_train_ds = train_ds.take(2000)
         self.train_ds = train_ds #train_ds.take(2*5400)  # for comparability
 
-        self.eval_ds = make_train_ds(self.data_path_eval, 128, n_shuffle=None, tmax=self.n_classes)
+        self.eval_ds = make_train_ds(self.data_path_eval, 128, n_shuffle=None, tmax=tmax)
 
 
     def train(self):
+        self.setup_ds(tmax=self.n_classes)
+
         loss = tf.keras.losses.CategoricalCrossentropy(from_logits=False),
         metrics = 'categorical_accuracy'
 
@@ -199,6 +205,9 @@ class Train:
 
     
     def evaluate_single(self, dir, on_train=False):
+        if not self.train_ds:
+            self.setup_ds(tmax=self.n_classes)
+        
         model = load_model(dir)
 
         loss = tf.keras.losses.CategoricalCrossentropy(from_logits=False)
@@ -212,6 +221,8 @@ class Train:
 
     
     def evaluate_all(self, dir, on_train=False):
+        if not self.train_ds:
+            self.setup_ds(tmax=self.n_classes)
 
         def extract_epoch(path):
             return int(os.path.relpath(path, dir)[5:])
@@ -233,7 +244,7 @@ class Train:
         df.to_csv(dir + '/evaluation.csv')
 
 
-    def evaluate_loss(self, dir, on_train, layer=-1):
+    def calc_loss(self, dir, on_train, layer=-1):
         if dir:
             encoder = load_encoder(dir)
             inp = encoder.input
@@ -253,59 +264,56 @@ class Train:
 
         model = tf.keras.Model(inputs={'img1': img1, 'img2': img2}, outputs=l2)
 
+        self.setup_ds(tmax=None)
         ds = self.train_ds if on_train else self.eval_ds
-        samples = {i: [] for i in range(self.n_classes)}
 
-        for X,y,weight in ds.take(200):
+        samples = {}
+        for X,y,weight in ds.take(2000):
             preds = model(X)
             labels = np.argmax(y, axis=1)
 
             for pred, label in zip(preds, labels):
+                if label not in samples:
+                    samples[label] = []
                 samples[label].append(pred)
 
-        means = [np.mean(samples[i]) for i in range(self.n_classes)]
-        stds = [np.std(samples[i]) for i in range(self.n_classes)]
+        # potentially unsafe (not guaranteed to be contained), but should be ok
+        means = np.asarray([np.mean(samples[i]) for i in sorted(samples)])
+        stds = np.asarray([np.std(samples[i]) for i in sorted(samples)])
         
-        plt.figure()
-        plt.errorbar(np.arange(self.n_classes), means, stds, marker='^')
-        plt.savefig(f'layer{layer}_loss.png')
-        plt.close()
+        return means, stds
+
+
+    def evaluate_loss(self, dir, layer, on_train=True):
+        if layer < 0:
+            encoder = load_encoder(dir)
+            layer = len(encoder.layers) + layer
+
+        mse_means, mse_stds = self.calc_loss(None, on_train, layer)
+        layer_means, layers_stds = self.calc_loss(dir, on_train, layer)
+
+        df = pd.DataFrame({'mse_mean': mse_means, 'mse_std': mse_stds, 'layer_mean': layer_means, 'layer_std': layers_stds})
+        df.to_csv(dir + f'/layer{layer}_loss.csv')
         
-        print(means)
-        print(1.54 / means[15])
+        # C = sum_i=1^N (alpha*l_i - m_i)**2
+        #   = sum_i=1^N alpha^2*l_i^2 - 2*alpha*l_i*m_i + m_i^2
+        #   = (sum l_i^2)*alpha^2 - 2*(sum l_i*m_i)*alpha + (sum m_i^2)
+        #
+        # dC/dalpha = 2*(sum l_i^2)*alpha - 2*(sum l_i*m_i) = 0
+        # =>  alpha = (sum l_i*m_i) / (sum l_i^2)
+        N = layer_means.shape[0]
+        alpha = np.sum(layer_means[N//2:] * mse_means[N//2:]) / np.sum(layer_means[N//2:]**2)
+        print(f'alpha={alpha}')
 
-    
-    def check_gradient(self, dir, with_checkboard=False):
-        encoder = load_encoder(dir)
-        batch = next(iter(self.train_ds))
-        img1, img2 = batch[0]['img1'][0], batch[0]['img2'][0]
-
-        def calc_and_save_grad(x, prefix):
-            with tf.GradientTape() as tape:
-                tape.watch(x)
-                l2 = tf.math.reduce_mean(tf.math.squared_difference(img1,x))
-            
-            grad = tape.gradient(l2, x).numpy()
-            for c in range(grad.shape[-1]):
-                plt.imsave(f'{prefix}{c}.png', grad[..., c])
-
-            return grad
-
-        checkboard = np.asarray([[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
-        noisy = img2 + 0.8 * np.tile(checkboard, (img2.shape[0]//4,img2.shape[0]//4))[:,:,None]
-        calc_and_save_grad(noisy, 'grad_checkboard')
-
-        x = noisy
-        for i in range(20):
-            g = calc_and_save_grad(x, f'grad_step{i}_')
-            print(g)
-            x = x - 10000*g
-            plt.imsave(f'x{i}_0.png', x[..., 0])
-
+        with open(dir + f'/layer{layer}_scale.txt', 'w') as f:
+            f.write(str(alpha))
 
 def main():
     #Train().run()
-    Train().evaluate_all('/data/final_rp_models/rnet-small-23c_2021-09-09_1831')
+    #Train().evaluate_all('/data/final_rp_models/rnet-small-23c_2021-09-09_1831')
+    Train().evaluate_loss('/data/final_rp_models/rnet-small-23c_2021-09-09_1831/epoch27', layer=196)
+    Train().evaluate_loss('/data/final_rp_models/rnet-small-23c_2021-09-09_1831/epoch27', layer=148)
+
 
 if __name__ == '__main__':
     main()
