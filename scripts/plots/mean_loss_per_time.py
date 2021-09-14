@@ -11,6 +11,7 @@ layer = 196
 
 if __name__ == '__main__':
     sns.set_theme('paper')
+    sns.set_style("whitegrid")
 
     losses = pd.read_csv(DIR + f'/layer{layer}_loss.csv')
     scale = float(Path(DIR + f'/layer{layer}_scale.txt').read_text())

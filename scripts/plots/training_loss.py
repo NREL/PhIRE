@@ -9,6 +9,7 @@ DIR = '/data/final_rp_models/rnet-small-23c_2021-09-09_1831'
 
 if __name__ == '__main__':
     sns.set_theme('paper')
+    sns.set_style("whitegrid")
 
     train = pd.read_csv(DIR + '/training.csv', sep=' ')
     eval = pd.read_csv(DIR + '/evaluation.csv')

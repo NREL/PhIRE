@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 
 if __name__ == '__main__':
     sns.set_theme('paper')
+    sns.set_style("whitegrid")
 
     data = pd.read_csv('histogram.csv')
     tmp = data.values[:, 1:].reshape(-1, 4, 2).sum(axis=1)
