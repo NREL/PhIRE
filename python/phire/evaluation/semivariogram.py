@@ -1,9 +1,25 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 import pyshtools as pysh
 
 from .base import EvaluationMethod
 from phire.utils import Welford
+
+
+def _plot_semivariogram(lags, data):
+    fig, ax = plt.subplots(figsize=(5.5,2.75))
+    ax.set_yscale('log')
+    ax.set_xscale('log')
+
+    for name, (mean,std) in data.items():
+        #ax.errorbar(lags, mean, std, label=name)
+        ax.plot(lags, mean, label=name)
+
+    ax.set_xlabel('lag distance')
+    ax.legend()
+
+    return fig, ax
 
 
 class Semivariogram(EvaluationMethod):
@@ -107,18 +123,11 @@ class Semivariogram(EvaluationMethod):
         means = means / ds_var[None, :, None]
         stds = stds / ds_var[None, :, None]
 
-        stds *= 0
-
         C = means.shape[1]
         for c in range(C):
-            plt.figure(figsize=(10,5))
-            plt.yscale('log')
-            plt.xscale('log')
-
-            for i, name in enumerate(paths):
-                plt.errorbar(lags, means[i,c], stds[i,c], label=name)
-
-            plt.xlabel('lag distance')
-            plt.legend()
-
-            plt.savefig(outdir / f'semivariogram_channel_{c}.png')
+            data = {name: (means[i,c], stds[i,c])for i, name in enumerate(paths)}
+            with sns.plotting_context('paper'), sns.axes_style('whitegrid'), sns.color_palette('deep'):
+                fig, ax = _plot_semivariogram(lags, data)
+                fig.savefig(outdir / f'semivariogram_channel_{c}.png', bbox_inches='tight')
+                fig.savefig(outdir / f'semivariogram_channel_{c}.pdf', bbox_inches='tight')
+                fig.close()
