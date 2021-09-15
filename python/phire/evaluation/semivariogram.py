@@ -130,4 +130,4 @@ class Semivariogram(EvaluationMethod):
                 fig, ax = _plot_semivariogram(lags, data)
                 fig.savefig(outdir / f'semivariogram_channel_{c}.png', bbox_inches='tight')
                 fig.savefig(outdir / f'semivariogram_channel_{c}.pdf', bbox_inches='tight')
-                fig.close()
+                plt.close(fig)

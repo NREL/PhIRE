@@ -5,6 +5,7 @@ import json
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 
 
 class Histogram(EvaluationMethod):
@@ -45,8 +46,9 @@ class Histogram(EvaluationMethod):
         C = len(glob(str(p / 'raw_channel*.csv')))
 
         for c in range(C):
-            data = {name: np.loadtxt(path / f'raw_channel{c}.csv') for name, path in paths.items()}
-    
+            data = {name: np.loadtxt(path / f'raw_channel{c}.csv')[::4*4] for name, path in paths.items()}
+            channel_name = ['divergence [s\u207B\u00B9]', 'vorticity [s\u207B\u00B9]'][c] 
+
             quantiles = {}
             for name in data:
                 percentiles = [2, 9, 25, 50, 75, 91, 98]
@@ -57,36 +59,54 @@ class Histogram(EvaluationMethod):
                 json.dump(quantiles, f, indent=4)
 
             data_df = pd.DataFrame.from_dict(data)
-            data_df = pd.melt(data_df, var_name='model')
+            data_df = pd.melt(data_df, var_name='model', value_name=channel_name)
 
             with sns.plotting_context('paper'), sns.axes_style('whitegrid'), sns.color_palette('deep'):
 
                 # box plot
-                g = sns.catplot(x='value', y='model', kind='box', orient='h', height=5.5, 
+                g = sns.catplot(x=channel_name, y='model', kind='box', orient='h',  height=1.5, aspect=3.25,
                     showfliers=False, 
                     showmeans=True,
+                    meanprops={'markerfacecolor': 'dimgray', 'markeredgecolor': 'dimgray'},
                     whis=(9,91),
                     data=data_df)
                 g.set(xscale='symlog')
+                g.ax.xaxis.set_major_locator(plt.MaxNLocator(9, steps=[1,2,4], min_n_ticks=4))#plt.MultipleLocator(1e-5))
+                formatter = ticker.ScalarFormatter()
+                formatter.set_powerlimits((-1, 1))
+                g.ax.xaxis.set_major_formatter(formatter)
                 
                 g.fig.savefig(outdir / f'boxplot_channel{c}.png', bbox_inches='tight')
                 g.fig.savefig(outdir / f'boxplot_channel{c}.pdf', bbox_inches='tight')
                 plt.close(g.fig)
 
                 # kde
-                g = sns.displot(x='value', hue='model', kind='kde', data=data_df, bw_adjust=.6, clip=(-1e-4, 1.0e-4), cut=0) 
+                g = sns.displot(x=channel_name, hue='model', kind='kde', data=data_df, bw_adjust=.5, clip=(-7e-5, 7e-5), cut=0.5, height=3.0, aspect=1.25) 
                 g.set(yscale='log')
+                for line2d in g.ax.get_lines()[:-1]:
+                    line2d.set_linestyle(':')
+                    line2d.set_linewidth(1.3)
+                    line2d.set_alpha(0.9)
+                g.ax.get_lines()[-1].set_linewidth(2.0)
+                
+                formatter = ticker.ScalarFormatter()
+                formatter.set_powerlimits((-1, 1))
+                g.ax.xaxis.set_major_formatter(formatter)
+                
                 g.fig.savefig(outdir / f'kde_channel{c}.png', bbox_inches='tight')
                 g.fig.savefig(outdir / f'kde_channel{c}.pdf', bbox_inches='tight')
                 plt.close(g.fig)
 
-                means = {name: data[name].reshape((-1,) + self.patch_size).mean(axis=(1,2)) for name in data}
-
+                """
+                # timeseries
+                timeseries = {name: np.fabs(data[name] - data['groundtruth'])[:100] for name in data}
                 fig, ax = plt.subplots(figsize=(8, 4.0))
-                for name in means:
-                    y = means[name][:200]
+                for name in timeseries:
+                    y = timeseries[name]
                     x = np.arange(y.shape[0])
-                    ax.plot(x, y, label=name, alpha=0.7)
+                    ax.plot(x, y, label=name, alpha=0.6)
+                    ax.fill_between(x, 0, y, alpha=0.2)
+
 
                 ax.legend()
                 ax.set_yscale('symlog')
@@ -94,3 +114,4 @@ class Histogram(EvaluationMethod):
                 fig.savefig(outdir / f'timeseries_channel{c}.png', bbox_inches='tight')
                 fig.savefig(outdir / f'timeseries_channel{c}.pdf', bbox_inches='tight')
                 plt.close(fig)
+                """

@@ -102,8 +102,6 @@ class PowerSpectrum(EvaluationMethod):
         energy_spectrum = np.mean(np.asarray(self.energy_spectrum), axis=0)
         np.savetxt(self.dir / 'energy_spectrum.csv', energy_spectrum)
 
-        self.summarize({'SR': self.dir}, self.dir)
-
 
     def summarize(self, paths, outdir):
         p = paths[next(iter(paths))]
@@ -117,12 +115,12 @@ class PowerSpectrum(EvaluationMethod):
             fig, ax = _plot_spectrum_200(energy_spectrums)
             fig.savefig(outdir / 'energy_spectrum.pdf', bbox_inches='tight')
             fig.savefig(outdir / 'energy_spectrum.png', bbox_inches='tight')
-            fig.close()
+            plt.close(fig)
 
             fig, ax = _plot_spectrum_low(energy_spectrums)
             fig.savefig(outdir / 'energy_spectrum_lowend.pdf', bbox_inches='tight')
             fig.savefig(outdir / 'energy_spectrum_lowend.png', bbox_inches='tight')
-            fig.close()
+            plt.close(fig)
 
             # individual channels
             for c in range(C):
@@ -131,11 +129,11 @@ class PowerSpectrum(EvaluationMethod):
                 fig, ax = _plot_spectrum_200(spectrums)
                 fig.savefig(outdir / f'spectrum_channel_{c}.pdf', bbox_inches='tight')
                 fig.savefig(outdir / f'spectrum_channel_{c}.png', bbox_inches='tight')
-                fig.close()
+                plt.close(fig)
 
                 fig, ax = _plot_spectrum_low(spectrums)
                 fig.savefig(outdir / f'spectrum_channel_{c}_lowend.pdf', bbox_inches='tight')
                 fig.savefig(outdir / f'spectrum_channel_{c}_lowend.png', bbox_inches='tight')
-                fig.close()
+                plt.close(fig)
 
             

@@ -108,15 +108,16 @@ class Evaluation:
         vis_na =    Visualize((self.to_px(40), self.to_px(250)), img_patch_size, img_freq)
         vis_pac =   Visualize((self.to_px(60), self.to_px(180)), img_patch_size, img_freq)
 
-        hist_magdeburg =    Histogram((self.to_px(52.377065), self.to_px(11.270699)), (3,3))
-        hist_vancouver =    Histogram((self.to_px(49.386224), self.to_px(236.500461)), (3,3))
-        hist_tokyo =        Histogram((self.to_px(35.895931), self.to_px(139.483625)), (3,3))
-        hist_capetown =     Histogram((self.to_px(-33.837297), self.to_px(18.283784)), (3,3))
+        hist_magdeburg =    Histogram((self.to_px(52.377065), self.to_px(11.270699)), (2,2))
+        hist_vancouver =    Histogram((self.to_px(49.386224), self.to_px(236.500461)), (2,2))
+        hist_tokyo =        Histogram((self.to_px(35.895931), self.to_px(139.483625)), (2,2))
+        hist_capetown =     Histogram((self.to_px(123.837297), self.to_px(18.283784)), (2,2))
+        hist_sidney =       Histogram((self.to_px(123.7053528), self.to_px(150.926361)), (2,2))
 
         if self.denorm:
             metrics = {
-                'power-spectrum': PowerSpectrum(1280, 2560),
-                'semivariogram': Semivariogram(n_samples=20),
+                #'power-spectrum': PowerSpectrum(1280, 2560),
+                'semivariogram': Semivariogram(n_samples=300),
                 'moments': Moments(),
                 'img-SEA': vis_sea,
                 'img-EU': vis_eu,
@@ -125,7 +126,8 @@ class Evaluation:
                 'hist-magdeburg': hist_magdeburg,
                 'hist-vancouver': hist_vancouver,
                 'hist-tokyo': hist_tokyo,
-                'hist-capetown': hist_capetown
+                'hist-capetown': hist_capetown,
+                'hist_sidney': hist_sidney
             }
         else:
             metrics = {
@@ -197,9 +199,9 @@ class Evaluation:
 
             t1_gan = time()
             for i, (LR, SR, HR) in enumerate(iter_):
-                # temporary speed up
+                # temporary speedup
                 if i == 0:
-                    print('[WARNING] TEMPORARY SPEED UP ACTIVE !')
+                    print('[WARNING] TEMPORARY SPEEDUP ACTIVE !')
                 if i % 3 != 0:
                     continue
 
@@ -267,21 +269,26 @@ def main():
     groundtruth = GroundtruthIterator(DIR / 'groundtruth')
     bilinear = BilinearIterator(DIR / 'bilinear')
 
+    mse_gan6 = GANIterator(
+        outdir = DIR / 'mse/gan-6',
+        checkpoint = '/data/sr_models/mse-20210901-111709/training/gan-6'
+    )
+
     mse_gan8 = GANIterator(
         outdir = DIR / 'mse/gan-8',
         checkpoint = '/data/sr_models/mse-20210901-111709/training/gan-8'
     )
 
-    rnet_23c_gan3 = GANIterator(
-        outdir = DIR / 'rnet-small-23c/gan-3',
-        checkpoint = '/data/sr_models/rnet-small-23c-20210912-161623/training/gan-3'
+    rnet_23c_gan4 = GANIterator(
+        outdir = DIR / 'rnet-small-23c/gan-4',
+        checkpoint = '/data/sr_models/rnet-small-23c-20210912-161623/training/gan-4'
     )
 
     if True:
         Evaluation(groundtruth, force_overwrite=True).run()
         #Evaluation(bilinear, force_overwrite=True).run()
-        Evaluation(mse_gan8, force_overwrite=True).run()
-        Evaluation(rnet_23c_gan3, force_overwrite=True).run()
+        Evaluation(mse_gan6, force_overwrite=True).run()
+        Evaluation(rnet_23c_gan4, force_overwrite=True).run()
 
     else: 
         Evaluation(groundtruth, force_overwrite=True).summarize(DIR / 'summary', {
