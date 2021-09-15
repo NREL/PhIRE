@@ -17,7 +17,10 @@ from .visualize import Visualize
 from .moments import Moments
 from .semivariogram import Semivariogram
 from .spectrum import PowerSpectrum
+from .histogram import Histogram
 
+
+BATCH_SIZE = 1
 
 class GANIterator:
 
@@ -34,7 +37,7 @@ class GANIterator:
             self.r, 
             dataset, 
             self.checkpoint, 
-            batch_size=2, 
+            batch_size=BATCH_SIZE, 
             save_every=1,  
             return_hr=True,
             only_hr=False
@@ -58,7 +61,7 @@ class BilinearIterator:
         LR_in = tf.placeholder(tf.float32, [None] + list(tmp_LR.shape[1:]))
         bilinear = tf.image.resize(LR_in, [tmp_HR.shape[1], tmp_HR.shape[2]], tf.image.ResizeMethod.BILINEAR)
 
-        for idx, LR, HR in gan.iterate_data(dataset, batch_size=2):
+        for idx, LR, HR in gan.iterate_data(dataset, batch_size=BATCH_SIZE):
             SR = tf.get_default_session().run(bilinear, feed_dict={LR_in: LR})
             yield LR, SR, HR
 
@@ -71,7 +74,7 @@ class GroundtruthIterator:
     def __call__(self, dataset, mean, std):
         mu_sig = [mean, std] if mean and std else None
         gan = PhIREGANs('eval', mu_sig, print_every=1e9, compression='ZLIB')
-        for idx, LR, HR in gan.iterate_data(dataset, batch_size=2):
+        for idx, LR, HR in gan.iterate_data(dataset, batch_size=BATCH_SIZE):
             SR = HR
             yield LR, SR, HR
 
@@ -100,10 +103,15 @@ class Evaluation:
         img_patch_size = (self.to_px(60), self.to_px(60))
         img_freq = 1000
 
-        vis_sea = Visualize((self.to_px(60), self.to_px(90)), img_patch_size, img_freq)
-        vis_eu = Visualize((self.to_px(40), self.to_px(0)), img_patch_size, img_freq)
-        vis_na = Visualize((self.to_px(40), self.to_px(250)), img_patch_size, img_freq)
-        vis_pac = Visualize((self.to_px(60), self.to_px(180)), img_patch_size, img_freq)
+        vis_sea =   Visualize((self.to_px(60), self.to_px(90)), img_patch_size, img_freq)
+        vis_eu =    Visualize((self.to_px(40), self.to_px(0)), img_patch_size, img_freq)
+        vis_na =    Visualize((self.to_px(40), self.to_px(250)), img_patch_size, img_freq)
+        vis_pac =   Visualize((self.to_px(60), self.to_px(180)), img_patch_size, img_freq)
+
+        hist_magdeburg =    Histogram((self.to_px(52.377065), self.to_px(11.270699)), (3,3))
+        hist_vancouver =    Histogram((self.to_px(49.386224), self.to_px(236.500461)), (3,3))
+        hist_tokyo =        Histogram((self.to_px(35.895931), self.to_px(139.483625)), (3,3))
+        hist_capetown =     Histogram((self.to_px(-33.837297), self.to_px(18.283784)), (3,3))
 
         if self.denorm:
             metrics = {
@@ -114,6 +122,10 @@ class Evaluation:
                 'img-EU': vis_eu,
                 'img-NA': vis_na,
                 'img-pacific': vis_pac,
+                'hist-magdeburg': hist_magdeburg,
+                'hist-vancouver': hist_vancouver,
+                'hist-tokyo': hist_tokyo,
+                'hist-capetown': hist_capetown
             }
         else:
             metrics = {
@@ -185,6 +197,12 @@ class Evaluation:
 
             t1_gan = time()
             for i, (LR, SR, HR) in enumerate(iter_):
+                # temporary speed up
+                if i == 0:
+                    print('[WARNING] TEMPORARY SPEED UP ACTIVE !')
+                if i % 3 != 0:
+                    continue
+
                 if self.measure_time:
                     print(f'inference took {time()-t1_gan:.2f}s')
                     t1_gan = time()
@@ -220,7 +238,8 @@ class Evaluation:
                     if self.measure_time:
                         print(f'{name} took {t2-t1:.2f}s')
 
-                print(i, flush=True)
+
+                print(f'\r{i}', flush=True, end='')
 
 
             for metric in self.metrics.values():
@@ -243,31 +262,33 @@ class Evaluation:
 
 
 def main():
-    groundtruth = GroundtruthIterator('/data/sr_results/groundtruth')
-    bilinear = BilinearIterator('/data/sr_results/bilinear')
+    DIR = Path('/data/sr_results/')
+
+    groundtruth = GroundtruthIterator(DIR / 'groundtruth')
+    bilinear = BilinearIterator(DIR / 'bilinear')
 
     mse_gan8 = GANIterator(
-        outdir = '/data/sr_results/mse/gan-8',
+        outdir = DIR / 'mse/gan-8',
         checkpoint = '/data/sr_models/mse-20210901-111709/training/gan-8'
     )
 
     rnet_23c_gan3 = GANIterator(
-        outdir = '/data/sr_results/rnet-small-23c/gan-3',
+        outdir = DIR / 'rnet-small-23c/gan-3',
         checkpoint = '/data/sr_models/rnet-small-23c-20210912-161623/training/gan-3'
     )
 
     if True:
         Evaluation(groundtruth, force_overwrite=True).run()
-        Evaluation(bilinear, force_overwrite=True).run()
+        #Evaluation(bilinear, force_overwrite=True).run()
         Evaluation(mse_gan8, force_overwrite=True).run()
         Evaluation(rnet_23c_gan3, force_overwrite=True).run()
 
     else: 
-        Evaluation(groundtruth, force_overwrite=True).summarize('/data/sr_results/summary', {
-            'groundtruth': '/data/sr_results/groundtruth',
-            #'bilinear': '/data/sr_results/bilinear',
-            'mse': '/data/sr_results/mse/gan-8',
-            'ours': '/data/sr_results/rnet-small-23c/gan-2'
+        Evaluation(groundtruth, force_overwrite=True).summarize(DIR / 'summary', {
+            'groundtruth': DIR / 'groundtruth',
+            'ours': DIR / 'rnet-small-23c/gan-3',
+            'mse': DIR / 'mse/gan-8',
+            #'bilinear': DIR / 'bilinear',  
         })
 
 if __name__ == '__main__':
