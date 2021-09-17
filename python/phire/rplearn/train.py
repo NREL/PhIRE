@@ -147,7 +147,7 @@ class Train:
     def setup_ds(self, tmax):
         train_ds = make_train_ds(self.data_path_train, 128, n_shuffle=2000, tmax=tmax)
         
-        self.small_train_ds = train_ds.take(2000)
+        self.small_train_ds = train_ds.take(2000)  # order is shuffled but these are always the same 2000 batches 
         self.train_ds = train_ds #train_ds.take(2*5400)  # for comparability
 
         self.eval_ds = make_train_ds(self.data_path_eval, 128, n_shuffle=None, tmax=tmax)
