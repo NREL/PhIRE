@@ -16,6 +16,9 @@ if __name__ == '__main__':
     losses = pd.read_csv(DIR + f'/layer{layer}_loss.csv')
     scale = float(Path(DIR + f'/layer{layer}_scale.txt').read_text())
 
+    # clip to 60h
+    losses = losses[:20]
+
     fig, ax = plt.subplots(figsize=(6, 3.0))
 
     with sns.color_palette('deep'):
