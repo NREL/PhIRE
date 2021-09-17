@@ -9,15 +9,28 @@ from phire.utils import Welford
 
 def _plot_semivariogram(lags, data):
     fig, ax = plt.subplots(figsize=(5.5,2.75))
-    ax.set_yscale('log')
+    #ax.set_yscale('log')
     ax.set_xscale('log')
 
     for name, (mean,std) in data.items():
         #ax.errorbar(lags, mean, std, label=name)
         ax.plot(lags, mean, label=name)
 
-    ax.set_xlabel('lag distance')
-    ax.legend()
+    ax.set_xticks([50, 100, 200, 500, 1000])
+    ax.xaxis.set_major_formatter(plt.ScalarFormatter())
+
+    """
+    locmin = plt.LogLocator(base=10.0, subs=(1.0, 1.5)) 
+    ax.yaxis.set_major_locator(locmin)
+
+    formatter = plt.ScalarFormatter()
+    formatter.set_powerlimits((0, 0))
+    ax.yaxis.set_major_formatter(formatter)
+    """
+
+    ax.set_ylabel('normalized variance')
+    ax.set_xlabel('lag distance [km]')
+    ax.legend(loc='lower right')
 
     return fig, ax
 
@@ -99,8 +112,6 @@ class Semivariogram(EvaluationMethod):
         np.savetxt(self.dir / 'ds_mean.csv', self.variances.mean)
         np.savetxt(self.dir / 'ds_std.csv', self.variances.std)
 
-        self.summarize({'SR': self.dir}, self.dir)
-
 
     def summarize(self, paths, outdir):
         means = []
@@ -110,18 +121,18 @@ class Semivariogram(EvaluationMethod):
             stds.append(np.loadtxt(path / 'semivariogram_std.csv'))
             lags = np.loadtxt(path / 'lags.csv')
 
-        if 'groundtruth' in paths:
-            ds_var = np.loadtxt(paths['groundtruth'] / 'ds_std.csv')**2  # shape: (channel,)
+        if 'ground truth' in paths:
+            ds_var = np.loadtxt(paths['ground truth'] / 'ds_std.csv')**2  # shape: (channel,)
         else:
             ds_var = np.loadtxt(list(paths.values())[0] / 'ds_std.csv')**2 
 
 
-        means = np.stack(means, axis=0)  # run x channel x lag
+        means = np.stack(means, axis=0)  # model x channel x lag
         stds = np.stack(stds, axis=0)
 
         # normalize to variance of dataset:
-        means = means / ds_var[None, :, None]
-        stds = stds / ds_var[None, :, None]
+        means = means / ds_var[None, :, None] / 2
+        stds = stds / ds_var[None, :, None] / 2
 
         C = means.shape[1]
         for c in range(C):

@@ -2,7 +2,7 @@ import os
 import sys
 
 from numpy.lib.arraysetops import isin
-#os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 import tensorflow as tf
 import numpy as np
@@ -95,7 +95,6 @@ class Evaluation:
         self.mean_log1p, self.std_log1p = [0.0008821452, 0.00032483143], [0.15794525, 0.16044095]  # alpha = 0.2
 
         self.setup_metrics()
-        self.test_dims()
 
 
     def setup_metrics(self):
@@ -115,30 +114,29 @@ class Evaluation:
         hist_sidney =       Histogram((self.to_px(123.7053528), self.to_px(150.926361)), (2,2))
 
         if self.denorm:
-            metrics = {
+            self.metrics = {
                 #'power-spectrum': PowerSpectrum(1280, 2560),
                 'semivariogram': Semivariogram(n_samples=300),
-                'moments': Moments(),
-                'img-SEA': vis_sea,
-                'img-EU': vis_eu,
-                'img-NA': vis_na,
-                'img-pacific': vis_pac,
-                'hist-magdeburg': hist_magdeburg,
-                'hist-vancouver': hist_vancouver,
-                'hist-tokyo': hist_tokyo,
-                'hist-capetown': hist_capetown,
-                'hist_sidney': hist_sidney
+                #'moments': Moments(),
+                #'img-SEA': vis_sea,
+                #'img-EU': vis_eu,
+                #'img-NA': vis_na,
+                #'img-pacific': vis_pac,
+                #'hist-magdeburg': hist_magdeburg,
+                #'hist-vancouver': hist_vancouver,
+                #'hist-tokyo': hist_tokyo,
+                #'hist-capetown': hist_capetown,
+                #'hist_sidney': hist_sidney
             }
         else:
-            metrics = {
+            self.metrics = {
                 'img-SEA-transformed': vis_sea,
                 'img-EU-transformed': vis_eu,
                 'img-NA-transformed': vis_na,
                 'img-pacific-transformed': vis_pac,
             }
 
-        self.metrics = {k:metric for k, metric in metrics.items() if not metric.no_groundtruth or not self.is_groundtruth}
-
+        
 
     def to_px(self, deg):
         return int(round(deg*self.px_per_deg))
@@ -188,7 +186,11 @@ class Evaluation:
 
 
     def run(self):
-        calc_sh = any(metric.needs_sh for metric in self.metrics.values())
+        # filter metrics:
+        metrics = {k:metric for k, metric in self.metrics.items() if not metric.no_groundtruth or not self.is_groundtruth}
+        calc_sh = any(metric.needs_sh for metric in metrics.values())
+
+        self.test_dims()
 
         if not self.create_dirs(self.iterator.outdir):
             return
@@ -225,7 +227,7 @@ class Evaluation:
                         print(f'sh-transform took {t2-t1:.2f}s')
 
 
-                for name, metric in self.metrics.items():
+                for name, metric in metrics.items():
                     if i == 0:
                         metric.set_shape(HR.shape[1:])
 
@@ -244,7 +246,7 @@ class Evaluation:
                 print(f'\r{i}', flush=True, end='')
 
 
-            for metric in self.metrics.values():
+            for metric in metrics.values():
                 metric.finalize()
 
         finally:
@@ -258,6 +260,7 @@ class Evaluation:
             return
 
         for metric_name, metric in self.metrics.items():
+            print(f'processing {metric_name} ...', flush=True)
             metric_paths = {name: Path(path) / metric_name for name,path in paths.items()}
             metric.summarize(metric_paths, metric.dir)
 
@@ -279,22 +282,23 @@ def main():
         checkpoint = '/data/sr_models/mse-20210901-111709/training/gan-8'
     )
 
-    rnet_23c_gan4 = GANIterator(
-        outdir = DIR / 'rnet-small-23c/gan-4',
-        checkpoint = '/data/sr_models/rnet-small-23c-20210912-161623/training/gan-4'
+    rnet_23c_gan6 = GANIterator(
+        outdir = DIR / 'rnet-small-23c/gan-6',
+        checkpoint = '/data/sr_models/rnet-small-23c-20210912-161623/training/gan-6'
     )
 
-    if True:
-        Evaluation(groundtruth, force_overwrite=True).run()
+    if False:
+        #Evaluation(groundtruth, force_overwrite=True).run()
         #Evaluation(bilinear, force_overwrite=True).run()
         Evaluation(mse_gan6, force_overwrite=True).run()
-        Evaluation(rnet_23c_gan4, force_overwrite=True).run()
+        #Evaluation(rnet_23c_gan6, force_overwrite=True).run()
+        pass
 
     else: 
         Evaluation(groundtruth, force_overwrite=True).summarize(DIR / 'summary', {
-            'groundtruth': DIR / 'groundtruth',
-            'ours': DIR / 'rnet-small-23c/gan-3',
-            'mse': DIR / 'mse/gan-8',
+            'ground truth': DIR / 'groundtruth',
+            'ours': DIR / 'rnet-small-23c/gan-6',
+            'mse': DIR / 'mse/gan-6',
             #'bilinear': DIR / 'bilinear',  
         })
 

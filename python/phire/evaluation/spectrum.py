@@ -33,6 +33,30 @@ def _plot_spectrum_200(data):
     return fig, ax
 
 
+def _plot_spectrum_high(data):
+    fig, ax = plt.subplots(figsize=(5.5, 2.75))
+
+    for name, spectrum in data.items():
+        x = np.arange(1, 1+spectrum.shape[0])
+
+        # only plot wavenumber 550+
+        spectrum = spectrum[550:]
+        x = x[550:]
+
+        ax.plot(x, spectrum, label=name)
+
+    ax.loglog()
+
+    ax.legend()
+    ax.set_xlabel('wavenumber')
+    ax.set_ylabel('energy')
+
+    #ax.set_xticks([200, 300, 400, 500, 600])
+    ax.xaxis.set_major_formatter(ticker.ScalarFormatter())
+
+    return fig, ax
+
+
 def _plot_spectrum_low(data):
     fig, ax = plt.subplots(figsize=(5.5, 2.75))
 
@@ -122,6 +146,11 @@ class PowerSpectrum(EvaluationMethod):
             fig.savefig(outdir / 'energy_spectrum_lowend.png', bbox_inches='tight')
             plt.close(fig)
 
+            fig, ax = _plot_spectrum_high(energy_spectrums)
+            fig.savefig(outdir / 'energy_spectrum_highend.pdf', bbox_inches='tight')
+            fig.savefig(outdir / 'energy_spectrum_highend.png', bbox_inches='tight')
+            plt.close(fig)
+
             # individual channels
             for c in range(C):
                 spectrums  = {name: np.loadtxt(path / f'spectrum_channel_{c}.csv') for name, path in paths.items()}
@@ -134,6 +163,11 @@ class PowerSpectrum(EvaluationMethod):
                 fig, ax = _plot_spectrum_low(spectrums)
                 fig.savefig(outdir / f'spectrum_channel_{c}_lowend.pdf', bbox_inches='tight')
                 fig.savefig(outdir / f'spectrum_channel_{c}_lowend.png', bbox_inches='tight')
+                plt.close(fig)
+
+                fig, ax = _plot_spectrum_high(spectrums)
+                fig.savefig(outdir / f'spectrum_channel_{c}_highend.pdf', bbox_inches='tight')
+                fig.savefig(outdir / f'spectrum_channel_{c}_highend.png', bbox_inches='tight')
                 plt.close(fig)
 
             
