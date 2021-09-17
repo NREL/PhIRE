@@ -2,6 +2,24 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from .base import EvaluationMethod
+import imageio
+
+
+def _plot_images(imgs):
+    N_MODELS = len(imgs)
+    N_IMGS = imgs[list(imgs)[0]].shape[0]
+
+    fig, axes = plt.subplots(N_IMGS, N_MODELS, figsize=(N_MODELS*4.02, N_IMGS*4.02 + 0.15))
+    for i, name in enumerate(imgs):
+        for j, img in enumerate(imgs[name]):
+            ax = axes[j, i] 
+            ax.imshow(img)
+            ax.axis('off')
+            if j == 0:
+                ax.set_title(name, fontsize=12) 
+
+    plt.subplots_adjust(wspace=0.01, hspace=0.01)
+    return fig, axes
 
 
 class Visualize(EvaluationMethod):
@@ -59,3 +77,49 @@ class Visualize(EvaluationMethod):
 
             plt.imsave(f'{directory}/LR_div.png', img_LR[...,0], vmin=vmin_div, vmax=vmax_div)
             plt.imsave(f'{directory}/LR_vort.png', img_LR[...,1], vmin=vmin_vort, vmax=vmax_vort)
+
+    
+    def summarize(self, paths, outdir):
+        N_MAX = 4
+
+        div_imgs = {}
+        vort_imgs = {}
+
+        for name, main_path in paths.items():
+            if name == 'ground truth':
+                continue
+
+            div_imgs[name] = np.stack([imageio.imread(img_p) for img_p in sorted(main_path.glob('*/div.png'))], axis=0)
+            vort_imgs[name] = np.stack([imageio.imread(img_p) for img_p in sorted(main_path.glob('*/vort.png'))], axis=0)
+
+            # cutoff HR image. By including the HR image, we ensure that every img has the same cmap though.
+            H,W = div_imgs[name].shape[1:3]
+            div_imgs['ground truth'] = div_imgs[name][:N_MAX, :, W//2:]
+            vort_imgs['ground truth'] = vort_imgs[name][:N_MAX, :, W//2:]
+
+            div_imgs[name] = div_imgs[name][:N_MAX, :, :W//2]
+            vort_imgs[name] = vort_imgs[name][:N_MAX, :, :W//2]
+
+        H,W = div_imgs[list(div_imgs)[0]].shape[1:3]
+
+        fig, axes = _plot_images(div_imgs)
+        fig.savefig(outdir / 'div.png', bbox_inches='tight', dpi=H//4)
+        fig.savefig(outdir / 'div.pdf', bbox_inches='tight')
+
+        fig, axes = _plot_images(vort_imgs)
+        fig.savefig(outdir / 'vort.png', bbox_inches='tight', dpi=H//4)
+        fig.savefig(outdir / 'vort.pdf', bbox_inches='tight')
+
+
+        # zoomed in
+        #if outdir.parts[-1] == 'img-EU':
+        div_imgs = {name: imgs[:, H//2:, W//2:] for name,imgs in div_imgs.items()}
+        vort_imgs = {name: imgs[:, H//2:, W//2:] for name,imgs in vort_imgs.items()}
+
+        fig, axes = _plot_images(div_imgs)
+        fig.savefig(outdir / 'div_zoom.png', bbox_inches='tight', dpi=H//2)
+        fig.savefig(outdir / 'div_zoom.pdf', bbox_inches='tight')
+
+        fig, axes = _plot_images(vort_imgs)
+        fig.savefig(outdir / 'vort_zoom.png', bbox_inches='tight', dpi=H//2)
+        fig.savefig(outdir / 'vort_zoom.pdf', bbox_inches='tight')

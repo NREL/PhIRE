@@ -20,7 +20,7 @@ if __name__ == '__main__':
     
     with sns.color_palette('deep'):
         # loss plot
-        fig0, ax0 = plt.subplots(figsize=(4.0, 2.75))
+        fig0, ax0 = plt.subplots(figsize=(4.0, 3.0))
         ax0.plot(train.epoch - 19, train.loss, label='training set')
         ax0.plot(eval.epoch + 1, eval.loss, label='evaluation set')
         

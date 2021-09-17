@@ -335,9 +335,7 @@ class PhIREGANs:
         '''
 
         tf.reset_default_graph()
-        
-        assert self.mu_sig is not None, 'Value for mu_sig must be set first.'
-        
+ 
         self.set_LR_data_shape(data_path)
         h, w, C = self.LR_data_shape
 
@@ -383,11 +381,7 @@ class PhIREGANs:
                     else:
                         batch_SR = batch_HR
 
-                    batch_LR = self.mu_sig[1]*batch_LR + self.mu_sig[0]
-                    batch_SR = self.mu_sig[1]*batch_SR + self.mu_sig[0]
-
                     if return_hr:
-                        batch_HR = self.mu_sig[1]*batch_HR + self.mu_sig[0]
                         yield batch_LR, batch_SR, batch_HR
                     else:
                         yield batch_LR, batch_SR
@@ -407,9 +401,6 @@ class PhIREGANs:
             try:
                 while True:
                     batch_idx, batch_LR, batch_HR = sess.run([idx, LR_out, HR_out])
-                    batch_LR = self.mu_sig[1]*batch_LR + self.mu_sig[0]
-                    batch_HR = self.mu_sig[1]*batch_HR + self.mu_sig[0]
-
                     yield batch_idx, batch_LR, batch_HR
 
             except tf.errors.OutOfRangeError:
@@ -453,15 +444,6 @@ class PhIREGANs:
         data_LR = tf.reshape(data_LR, (h_LR, w_LR, c))
         data_HR = tf.reshape(data_HR, (h_HR, w_HR, c))
 
-        if False:
-            y = data_LR
-            y = tf.math.expm1(tf.math.abs(y)) * tf.math.sign(y)
-            data_LR = tf.math.sign(y) * tf.math.log1p(0.2 * tf.math.abs(y))
-
-            y = data_HR
-            y = tf.math.expm1(tf.math.abs(y)) * tf.math.sign(y)
-            data_HR = tf.math.sign(y) * tf.math.log1p(0.2 * tf.math.abs(y))
-
         if mu_sig is not None:
             data_LR = (data_LR - mu_sig[0])/mu_sig[1]
             data_HR = (data_HR - mu_sig[0])/mu_sig[1]
@@ -496,11 +478,6 @@ class PhIREGANs:
 
         data_LR = tf.decode_raw(example['data_LR'], tf.float32)
         data_LR = tf.reshape(data_LR, (h_LR, w_LR, c))
-
-        if False:
-            y = data_LR
-            y = tf.math.expm1(tf.math.abs(y)) * tf.math.sign(y)            
-            data_LR = tf.math.sign(y) * tf.math.log1p(0.2 * tf.math.abs(y))
 
         if mu_sig is not None:
             data_LR = (data_LR - mu_sig[0])/mu_sig[1]

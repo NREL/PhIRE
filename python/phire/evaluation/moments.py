@@ -51,6 +51,6 @@ class Moments(EvaluationMethod):
         means = {k: np.load(path / 'mean.npy') for k,path in paths.items()}
         stds = {k: np.load(path / 'std.npy') for k,path in paths.items()}
 
-        total_error = {k: np.sum((mean - means['groundtruth'])**2) for k, mean in means.items()}
+        total_error = {k: np.sum((mean - means['ground truth'])**2) for k, mean in means.items()}
         with open(outdir / 'cumulative_squared_error.json', 'w') as f:
             json.dump(total_error, f)

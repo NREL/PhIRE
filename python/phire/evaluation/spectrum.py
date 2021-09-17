@@ -1,11 +1,83 @@
 from glob import glob
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 from spharm import Spharmt
 import pyshtools as pysh
-
+import seaborn as sns
 
 from .base import EvaluationMethod
+
+
+def _plot_spectrum_200(data):
+    fig, ax = plt.subplots(figsize=(5.5, 2.75))
+
+    for name, spectrum in data.items():
+        x = np.arange(1, 1+spectrum.shape[0])
+
+        # only plot wavenumber 200+
+        spectrum = spectrum[200:]
+        x = x[200:]
+
+        ax.plot(x, spectrum, label=name)
+
+    ax.loglog()
+
+    ax.legend()
+    ax.set_xlabel('wavenumber')
+    ax.set_ylabel('energy')
+
+    ax.set_xticks([200, 300, 400, 500, 600])
+    ax.xaxis.set_major_formatter(ticker.ScalarFormatter())
+
+    return fig, ax
+
+
+def _plot_spectrum_high(data):
+    fig, ax = plt.subplots(figsize=(5.5, 2.75))
+
+    for name, spectrum in data.items():
+        x = np.arange(1, 1+spectrum.shape[0])
+
+        # only plot wavenumber 550+
+        spectrum = spectrum[550:]
+        x = x[550:]
+
+        ax.plot(x, spectrum, label=name)
+
+    ax.loglog()
+
+    ax.legend()
+    ax.set_xlabel('wavenumber')
+    ax.set_ylabel('energy')
+
+    #ax.set_xticks([200, 300, 400, 500, 600])
+    ax.xaxis.set_major_formatter(ticker.ScalarFormatter())
+
+    return fig, ax
+
+
+def _plot_spectrum_low(data):
+    fig, ax = plt.subplots(figsize=(5.5, 2.75))
+
+    for name, spectrum in data.items():
+        x = np.arange(1, 1+spectrum.shape[0])
+
+        spectrum = spectrum[10:200]
+        x = x[10:200]
+
+        ax.plot(x, spectrum, label=name)
+
+    ax.set_yscale('log')
+
+    ax.legend()
+    ax.set_xlabel('wavenumber')
+    ax.set_ylabel('energy')
+
+    #ax.set_xticks([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, ])
+    #ax.xaxis.set_major_formatter(ticker.ScalarFormatter())
+
+    return fig, ax
 
 
 class PowerSpectrum(EvaluationMethod):
@@ -54,42 +126,48 @@ class PowerSpectrum(EvaluationMethod):
         energy_spectrum = np.mean(np.asarray(self.energy_spectrum), axis=0)
         np.savetxt(self.dir / 'energy_spectrum.csv', energy_spectrum)
 
-        self.summarize({'SR': self.dir}, self.dir)
-
 
     def summarize(self, paths, outdir):
         p = paths[next(iter(paths))]
         C = len(glob(str(p / 'spectrum_channel_*.csv')))
+        
+        with sns.plotting_context('paper'), sns.axes_style('whitegrid'), sns.color_palette('deep'):
+        
+            # energy
+            energy_spectrums  = {name: np.loadtxt(path / 'energy_spectrum.csv') for name, path in paths.items()}
+            
+            fig, ax = _plot_spectrum_200(energy_spectrums)
+            fig.savefig(outdir / 'energy_spectrum.pdf', bbox_inches='tight')
+            fig.savefig(outdir / 'energy_spectrum.png', bbox_inches='tight')
+            plt.close(fig)
 
-        for c in range(C):
-            plt.figure(figsize=(10,5))
-            plt.xscale('log')
-            plt.yscale('log')
-            plt.xlabel('wavenumber')
-            plt.ylabel('energy')
+            fig, ax = _plot_spectrum_low(energy_spectrums)
+            fig.savefig(outdir / 'energy_spectrum_lowend.pdf', bbox_inches='tight')
+            fig.savefig(outdir / 'energy_spectrum_lowend.png', bbox_inches='tight')
+            plt.close(fig)
 
-            for name, path in paths.items():
-                spectrum = np.loadtxt(path / f'spectrum_channel_{c}.csv')
-                x = np.arange(1, 1+spectrum.shape[0])
-                plt.plot(x, spectrum, label=name)
+            fig, ax = _plot_spectrum_high(energy_spectrums)
+            fig.savefig(outdir / 'energy_spectrum_highend.pdf', bbox_inches='tight')
+            fig.savefig(outdir / 'energy_spectrum_highend.png', bbox_inches='tight')
+            plt.close(fig)
 
-            plt.plot(x, x**(-5/3) * spectrum[0], '--')
-            plt.legend()
+            # individual channels
+            for c in range(C):
+                spectrums  = {name: np.loadtxt(path / f'spectrum_channel_{c}.csv') for name, path in paths.items()}
+                
+                fig, ax = _plot_spectrum_200(spectrums)
+                fig.savefig(outdir / f'spectrum_channel_{c}.pdf', bbox_inches='tight')
+                fig.savefig(outdir / f'spectrum_channel_{c}.png', bbox_inches='tight')
+                plt.close(fig)
 
-            plt.savefig(outdir / f'spectrum_channel_{c}.png')
+                fig, ax = _plot_spectrum_low(spectrums)
+                fig.savefig(outdir / f'spectrum_channel_{c}_lowend.pdf', bbox_inches='tight')
+                fig.savefig(outdir / f'spectrum_channel_{c}_lowend.png', bbox_inches='tight')
+                plt.close(fig)
 
-        plt.figure(figsize=(10,5))
-        plt.xscale('log')
-        plt.yscale('log')
-        plt.xlabel('wavenumber')
-        plt.ylabel('energy')
+                fig, ax = _plot_spectrum_high(spectrums)
+                fig.savefig(outdir / f'spectrum_channel_{c}_highend.pdf', bbox_inches='tight')
+                fig.savefig(outdir / f'spectrum_channel_{c}_highend.png', bbox_inches='tight')
+                plt.close(fig)
 
-        for name, path in paths.items():
-            spectrum = np.loadtxt(path / 'energy_spectrum.csv')
-            x = np.arange(1, 1+spectrum.shape[0])
-            plt.plot(x, spectrum, label=name)
-
-        plt.plot(x, x**(-5/3) * spectrum[0], '--')
-        plt.legend()
-
-        plt.savefig(outdir / 'energy_spectrum.png')
+            

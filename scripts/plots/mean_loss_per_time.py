@@ -19,7 +19,7 @@ if __name__ == '__main__':
     # clip to 60h
     losses = losses[:20]
 
-    fig, ax = plt.subplots(figsize=(6, 3.0))
+    fig, ax = plt.subplots(figsize=(5.0, 3.0))
 
     with sns.color_palette('deep'):
         x = np.arange(losses.shape[0]) + 1
