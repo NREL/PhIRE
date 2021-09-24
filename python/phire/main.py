@@ -3,19 +3,20 @@
 from .PhIREGANs import *
 from .encoder import load_encoder
 from glob import glob
+from pathlib import Path
 
 
 def main():
     
-    run_name = 'mse'
+    run_name = 'rnet-small-23c'
     compression='ZLIB'
     infiles = sorted(glob('/data/sebastian/sr/sr_train_1979_1998.*.tfrecords'))
-    checkpoint = None
+    checkpoint = '/data/sebastian/models/mse-20210901-111709/pretraining/generator-5'
     r = [2,2]
 
-    encoder_path = None
-    encoder_layer = -1
-    loss_scale = 1.0
+    encoder_path = Path('/data/sebastian/final_rp_models/rnet-small-23c_2021-09-09_1831/epoch27/')
+    encoder_layer = 196
+    loss_scale = float((encoder_path / f'layer{encoder_layer}_scale.txt').read_text())
 
     mu_sig = None  # data is already log1p- and z-normalized
 
@@ -38,7 +39,7 @@ def main():
     )
     
     # Pretraining
-    if True:
+    if False:
         gan.N_epochs = 5
         checkpoint = gan.pretrain(
             r=r,
@@ -60,7 +61,7 @@ def main():
             batch_size=64
         )
 
-        gan.N_epochs = 15
+        gan.N_epochs = 5
         gan.learning_rate = 1e-5
         gan.epoch_shift = 15
         checkpoint = gan.train(

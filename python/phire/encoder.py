@@ -1,5 +1,6 @@
 import tensorflow as tf
 import json
+from pathlib import Path
 
 
 def swish(x):
@@ -10,7 +11,8 @@ def L2(l2=1e-2):
     return tf.keras.regularizers.l2(l2)
 
 def load_encoder(path, layer_idx=-1, input_shape=None):
-    with open(path + '/encoder.json', 'r') as f:
+    path = Path(path)
+    with open(path / 'encoder.json', 'r') as f:
         encoder_org = tf.keras.models.model_from_json(f.read(), {'swish': swish, 'L2': L2})
 
     if input_shape:
@@ -27,6 +29,6 @@ def load_encoder(path, layer_idx=-1, input_shape=None):
 
     encoder = tf.keras.Model(input_l, out_l, trainable=False)
     encoder.summary()
-    encoder.load_weights(path + '/encoder_weights.hdf5', by_name=True)
+    encoder.load_weights(str(path / 'encoder_weights.hdf5'), by_name=True)
 
     return encoder
