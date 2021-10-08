@@ -6,6 +6,7 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+from scipy.stats import wasserstein_distance
 
 
 class Histogram(EvaluationMethod):
@@ -38,17 +39,18 @@ class Histogram(EvaluationMethod):
     def finalize(self):
         for c in self.values:
             data = np.concatenate(self.values[c])
-            np.savetxt(self.dir / f'raw_channel{c}.csv', data)
+            np.save(self.dir / f'raw_channel{c}.npy', data)
 
     
     def summarize(self, paths, outdir):
         p = paths[next(iter(paths))]
-        C = len(glob(str(p / 'raw_channel*.csv')))
+        C = len(glob(str(p / 'raw_channel*.npy')))
 
         for c in range(C):
-            data = {name: np.loadtxt(path / f'raw_channel{c}.csv')[::4*4] for name, path in paths.items()}
+            data = {name: np.load(path / f'raw_channel{c}.npy') for name, path in paths.items()}
             channel_name = ['divergence [s\u207B\u00B9]', 'vorticity [s\u207B\u00B9]'][c] 
 
+            # quantiles
             quantiles = {}
             for name in data:
                 percentiles = [2, 9, 25, 50, 75, 91, 98]
@@ -60,6 +62,12 @@ class Histogram(EvaluationMethod):
 
             data_df = pd.DataFrame.from_dict(data)
             data_df = pd.melt(data_df, var_name='model', value_name=channel_name)
+
+            # Wasserstein distance
+            if 'ground truth' in data:
+                wdist =  {name: wasserstein_distance(data[name], data['ground truth']) for name in data}
+                with open(outdir / f'wasserstein_dist_channel{c}.json', 'w') as f:
+                    json.dump(wdist, f, indent=4)
 
             with sns.plotting_context('paper'), sns.axes_style('whitegrid'), sns.color_palette('deep'):
 

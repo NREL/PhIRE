@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from .base import EvaluationMethod
 import imageio
+import pyshtools as pysh
 
 
 def _plot_images(imgs):
@@ -24,15 +25,17 @@ def _plot_images(imgs):
 
 class Visualize(EvaluationMethod):
 
-    def __init__(self, yx=None, patch_size=None, stride=None):
+    def __init__(self, yx=None, patch_size=None, stride=None, highpass=None):
         super(Visualize, self).__init__()
 
         self.n = 0
         self.yx=yx
         self.patch_size=patch_size
         self.stride = stride or 1
+        self.highpass = highpass
 
-        self.no_groundtruth = True
+        self.needs_sh = True if self.highpass else False
+        self.no_groundtruth = False#False if self.highpass else True
 
 
     def truncate(self, img, lr=False):
@@ -50,7 +53,33 @@ class Visualize(EvaluationMethod):
             return img[y:y+h, x:x+w]
 
 
+    def evaluate_SR_sh(self, i, LR, SR, SR_sh):
+        if not self.highpass:
+            return
+
+
+        for sh in SR_sh:
+            self.n += 1
+            if (self.n - 1) % self.stride != 0:
+                continue
+
+            # highpass
+            sh[:, :self.highpass, ...] = 0      
+
+            div = self.truncate(pysh.expand.MakeGridDH(sh[..., 0], sampling=2))
+            vort = self.truncate(pysh.expand.MakeGridDH(sh[..., 1], sampling=2))
+
+            directory = f'{self.dir}/{self.n - 1}'
+            os.makedirs(directory, exist_ok=True)
+
+            plt.imsave(f'{directory}/div.png', div, vmin=-1e-5, vmax=1e-5)
+            plt.imsave(f'{directory}/vort.png', vort,  vmin=-1e-5, vmax=1e-5)
+
+
     def evaluate_both(self, i, LR, SR, HR):
+        if self.highpass:
+            return
+
         for img_LR, img_SR, img_HR in zip(LR, SR, HR):
             self.n += 1
             if (self.n - 1) % self.stride != 0:
@@ -81,6 +110,9 @@ class Visualize(EvaluationMethod):
     
     def summarize(self, paths, outdir):
         N_MAX = 4
+
+        if self.highpass:
+            return
 
         div_imgs = {}
         vort_imgs = {}

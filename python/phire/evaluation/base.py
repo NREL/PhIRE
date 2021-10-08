@@ -18,6 +18,9 @@ class EvaluationMethod:
     def evaluate_both(self, i, LR, SR, HR):
         pass
 
+    def evaluate_both_sh(self, i, LR, SR, HR, SR_sh, HR_sh):
+        pass
+
 
     def evaluate_SR(self, i, LR, SR):
         pass

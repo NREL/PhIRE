@@ -196,3 +196,14 @@ def lanczos_filter_xr(arr, window_size, cutoff, dim, center=False):
         return np.sum(x*weights, axis=axis)
 
     return arr.rolling(dim={dim: window_size}, center=center).reduce(filter_)
+
+
+def tv(X):
+    """
+    Computes discrete total-variation given a batch of images with shape HxWxC
+
+    X: array of shape [B,H,W,C]
+    """
+    A = np.pad(X, ((0,0), (0,1), (0,0), (0,0)), mode='edge')[:,1:,:,:]
+    B = np.pad(X, ((0,0), (0,0), (0,1), (0,0)), mode='edge')[:,:,1:,:]
+    return np.sum(np.sqrt((A-X)**2 + (B-X)**2), axis=(1,2))

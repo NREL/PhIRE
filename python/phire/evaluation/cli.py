@@ -1,23 +1,38 @@
+import matplotlib
+from numpy.core.fromnumeric import trace
+matplotlib.use('Agg')  # this results in considerable plotting speedup and enables multiprocessing + non-interactive work
+
 import os
 import sys
+import gc
 
-from numpy.lib.arraysetops import isin
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-
+#os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 import tensorflow as tf
 import numpy as np
+import pandas as pd
+
 from glob import glob
 from pathlib import Path
 from time import time
 import pyshtools as pysh
+from scipy.ndimage import gaussian_filter1d
+import scipy.signal
+import pkg_resources
+import matplotlib.pyplot as plt
+import multiprocessing
+import traceback
 
 from phire.PhIREGANs import PhIREGANs
+import phire.utils as utils
 
 from .visualize import Visualize
 from .moments import Moments
 from .semivariogram import Semivariogram
 from .spectrum import PowerSpectrum
 from .histogram import Histogram
+from .highpass import HighpassCounter
+from .project import Project
+from .temporal_metric import TemporalMetric
 
 
 BATCH_SIZE = 1
@@ -79,6 +94,27 @@ class GroundtruthIterator:
             yield LR, SR, HR
 
 
+def _process_metric(paths, metric_name, metric):
+    """
+    Helper function used by Evaluation.summarize().
+    Needs to be global to be pickleable.
+    """
+    try:
+        print(f'processing {metric_name} ...', flush=True)
+        metric_paths = {name: Path(path) / metric_name for name,path in paths.items() if (Path(path) / metric_name).exists()}
+        metric.summarize(metric_paths, metric.dir)
+    except:
+        traceback.print_exc()
+        sys.stdout.flush()
+
+
+# have to be global to be pickleable
+def _mse_loss(SR,HR): 
+    return np.mean((SR-HR)**2, axis=(1,2))
+
+def _tv_loss(SR,HR): 
+    return utils.tv(SR) - utils.tv(HR)
+
 class Evaluation:
 
     def __init__(self, iterator, force_overwrite=False):
@@ -107,36 +143,52 @@ class Evaluation:
         vis_na =    Visualize((self.to_px(40), self.to_px(250)), img_patch_size, img_freq)
         vis_pac =   Visualize((self.to_px(60), self.to_px(180)), img_patch_size, img_freq)
 
-        hist_magdeburg =    Histogram((self.to_px(52.377065), self.to_px(11.270699)), (2,2))
-        hist_vancouver =    Histogram((self.to_px(49.386224), self.to_px(236.500461)), (2,2))
-        hist_tokyo =        Histogram((self.to_px(35.895931), self.to_px(139.483625)), (2,2))
-        hist_capetown =     Histogram((self.to_px(123.837297), self.to_px(18.283784)), (2,2))
-        hist_sidney =       Histogram((self.to_px(123.7053528), self.to_px(150.926361)), (2,2))
+        """
+        P = np.load(pkg_resources.resource_filename('phire', 'data/gaussian_projection.npy'))
+        rand_proj = Project(P, self.mean, self.std)
+
+        P = np.load(pkg_resources.resource_filename('phire', 'data/pca_projection.npy'))
+        pca_proj = Project(P, self.mean, self.std)
+        """
 
         if self.denorm:
             self.metrics = {
-                #'power-spectrum': PowerSpectrum(1280, 2560),
-                'semivariogram': Semivariogram(n_samples=300),
-                #'moments': Moments(),
-                #'img-SEA': vis_sea,
-                #'img-EU': vis_eu,
-                #'img-NA': vis_na,
-                #'img-pacific': vis_pac,
-                #'hist-magdeburg': hist_magdeburg,
-                #'hist-vancouver': hist_vancouver,
-                #'hist-tokyo': hist_tokyo,
-                #'hist-capetown': hist_capetown,
-                #'hist_sidney': hist_sidney
+                # 'power-spectrum': PowerSpectrum(1280, 2560),
+                # 'semivariogram': Semivariogram(n_samples=300),
+                # 'moments': Moments(),
+                # 'img-SEA': vis_sea,
+                # 'img-EU': vis_eu,
+                # 'img-NA': vis_na,
+                # 'img-pacific': vis_pac,
+                'losses/mse': TemporalMetric(_mse_loss, label='mean squared error'),
+                'losses/tv': TemporalMetric(_tv_loss, label='total variation difference'),
+                #'random_projection': rand_proj,
+                #'pca_projection': pca_proj
             }
+
+            cities = pd.read_csv(pkg_resources.resource_filename('phire', 'data/cities.csv'))
+            for i, city in cities.iterrows():
+                y = self.to_px(90 - city.lat)
+                x = self.to_px(city.lng) if city.lng >= 0 else self.to_px(180 - city.lng)
+                machine_name = city.city_ascii.replace(' ', '_').lower()
+
+                if i < 50:
+                    projection = lambda batch, y=y,x=x: batch[:, y:y+25, x:x+25, :]
+                    self.metrics[f'projections/{machine_name}'] = Project(None, self.mean, self.std, projection)
+                
+                self.metrics[f'histograms_1x1/{machine_name}'] = Histogram((y,x), (1,1))
+                self.metrics[f'histograms_2x2/{machine_name}'] = Histogram((y,x), (2,2))
+                self.metrics[f'histograms_3x3/{machine_name}'] = Histogram((y,x), (3,3))
+
+
         else:
             self.metrics = {
                 'img-SEA-transformed': vis_sea,
                 'img-EU-transformed': vis_eu,
                 'img-NA-transformed': vis_na,
                 'img-pacific-transformed': vis_pac,
-            }
+            }        
 
-        
 
     def to_px(self, deg):
         return int(round(deg*self.px_per_deg))
@@ -145,11 +197,13 @@ class Evaluation:
     def deprocess(self, batch):
         y = batch * self.std_log1p + self.mean_log1p
         y =  np.sign(y) * np.expm1(np.fabs(y)) / 0.2  # alpha=0.2
-        return y*self.std + self.mean
+        y = y*self.std + self.mean
 
+        return y
+        
 
-    def create_dirs(self, dir):
-        for name, metric in self.metrics.items():
+    def create_dirs(self, dir, metrics):
+        for name, metric in metrics.items():
             metric_dir = Path(dir) / name
 
             try:
@@ -185,14 +239,14 @@ class Evaluation:
 
 
 
-    def run(self):
+    def run(self, max_iters=None):
         # filter metrics:
         metrics = {k:metric for k, metric in self.metrics.items() if not metric.no_groundtruth or not self.is_groundtruth}
         calc_sh = any(metric.needs_sh for metric in metrics.values())
 
         self.test_dims()
 
-        if not self.create_dirs(self.iterator.outdir):
+        if not self.create_dirs(self.iterator.outdir, metrics):
             return
 
         # data is already log1p normalized and z-normed
@@ -201,12 +255,6 @@ class Evaluation:
 
             t1_gan = time()
             for i, (LR, SR, HR) in enumerate(iter_):
-                # temporary speedup
-                if i == 0:
-                    print('[WARNING] TEMPORARY SPEEDUP ACTIVE !')
-                if i % 3 != 0:
-                    continue
-
                 if self.measure_time:
                     print(f'inference took {time()-t1_gan:.2f}s')
                     t1_gan = time()
@@ -221,6 +269,8 @@ class Evaluation:
                     C = SR.shape[-1]
                     SR_sh = [np.stack([pysh.expand.SHExpandDH(img) for img in SR[..., c]], axis=0) for c in range(C)]
                     SR_sh = np.stack(SR_sh, axis=-1)
+                    HR_sh = [np.stack([pysh.expand.SHExpandDH(img) for img in HR[..., c]], axis=0) for c in range(C)]
+                    HR_sh = np.stack(HR_sh, axis=-1)
                     t2 = time()
                     
                     if self.measure_time:
@@ -233,6 +283,7 @@ class Evaluation:
 
                     t1 = time()
                     if metric.needs_sh:
+                        metric.evaluate_both_sh(i, LR, SR, HR, SR_sh, HR_sh)
                         metric.evaluate_SR_sh(i, LR, SR, SR_sh)
                     else:
                         metric.evaluate_both(i, LR, SR, HR)
@@ -242,8 +293,9 @@ class Evaluation:
                     if self.measure_time:
                         print(f'{name} took {t2-t1:.2f}s')
 
-
                 print(f'\r{i}', flush=True, end='')
+                if max_iters and i+1 == max_iters:
+                    break
 
 
             for metric in metrics.values():
@@ -256,50 +308,71 @@ class Evaluation:
 
 
     def summarize(self, outdir, paths):
-        if not self.create_dirs(outdir):
+        if not self.create_dirs(outdir, self.metrics):
             return
 
-        for metric_name, metric in self.metrics.items():
-            print(f'processing {metric_name} ...', flush=True)
-            metric_paths = {name: Path(path) / metric_name for name,path in paths.items()}
-            metric.summarize(metric_paths, metric.dir)
-
+        with multiprocessing.Pool(8) as pool:
+            results = []
+            for name, metric in self.metrics.items():
+                args =  [paths, name, metric]
+                results.append(pool.apply_async(_process_metric, args))
+                
+            for res in results:
+                res.wait()  # don't call get() here
 
 
 def main():
-    DIR = Path('/data/sr_results/')
+    plt.ioff()
+
+    DIR = Path('/data/old_results/sr_results_fftreg')
+    #DIR = Path('/data/sr_results')
 
     groundtruth = GroundtruthIterator(DIR / 'groundtruth')
     bilinear = BilinearIterator(DIR / 'bilinear')
 
-    mse_gan6 = GANIterator(
-        outdir = DIR / 'mse/gan-6',
-        checkpoint = '/data/sr_models/mse-20210901-111709/training/gan-6'
+    mse_gan18 = GANIterator(
+        outdir = DIR / 'mse/gan-18',
+        checkpoint = '/data/sr_models/mse-20210901-111709/training/gan-18'
     )
 
-    mse_gan8 = GANIterator(
-        outdir = DIR / 'mse/gan-8',
-        checkpoint = '/data/sr_models/mse-20210901-111709/training/gan-8'
+    rnet_23c_gan18 = GANIterator(
+        outdir = DIR / 'rnet-small-23c/gan-18',
+        checkpoint = '/data/sr_models/rnet-small-23c-20210912-161623/training/gan-18'
     )
 
-    rnet_23c_gan6 = GANIterator(
-        outdir = DIR / 'rnet-small-23c/gan-6',
-        checkpoint = '/data/sr_models/rnet-small-23c-20210912-161623/training/gan-6'
+    fftreg = GANIterator(
+        outdir = DIR / 'rnet-small-23c-fftreg/gan-6',
+        checkpoint = '/data/sr_models/rnet-small-23c-fftreg-20210924-142214/training/gan-6'
     )
 
     if False:
-        #Evaluation(groundtruth, force_overwrite=True).run()
-        #Evaluation(bilinear, force_overwrite=True).run()
-        Evaluation(mse_gan6, force_overwrite=True).run()
-        #Evaluation(rnet_23c_gan6, force_overwrite=True).run()
+        #Evaluation(groundtruth, force_overwrite=True).run(max_iters=None)
+        del groundtruth
+        gc.collect()
+
+        #Evaluation(bilinear, force_overwrite=True).run(max_iters=4)
+        
+        Evaluation(mse_gan18, force_overwrite=True).run(max_iters=None)
+        del mse_gan18
+        gc.collect()
+        
+        Evaluation(rnet_23c_gan18, force_overwrite=True).run(max_iters=None)
+        del rnet_23c_gan18
+        gc.collect()
+        
+        #Evaluation(fftreg, force_overwrite=True).run(max_iters=30)
         pass
 
-    else: 
+    if True: 
         Evaluation(groundtruth, force_overwrite=True).summarize(DIR / 'summary', {
+            #'ground truth': '/data/sr_results/groundtruth',
             'ground truth': DIR / 'groundtruth',
-            'ours': DIR / 'rnet-small-23c/gan-6',
-            'mse': DIR / 'mse/gan-6',
-            #'bilinear': DIR / 'bilinear',  
+            'ours': DIR / 'rnet-small-23c/gan-18',
+            #'ours': '/data/sr_results/rnet-small-23c/gan-12',
+            'mse': DIR / 'mse/gan-18',
+            #'mse': '/data/sr_results/mse/gan-12',
+            #'bilinear': DIR / 'bilinear',
+            #'fftreg': '/data/old_results/sr_results_fftreg/rnet-small-23c-fftreg/gan-6'
         })
 
 if __name__ == '__main__':

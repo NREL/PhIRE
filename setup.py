@@ -10,7 +10,8 @@ console_scripts = [
 
 
 package_data = {
-    'phire.jetstream': ['data/*.csv']
+    'phire.jetstream': ['data/*.csv'],
+    'phire': ['data/*']
 }
 
 packages = find_packages('python')
