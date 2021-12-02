@@ -58,7 +58,7 @@ ___
 ### Preparing the data
 AtmoDist is trained on vorticity and divergence fields from ERA5 reanalysis data. The data was directly obtained as spherical harmonic coefficients from model level 120, before being converted to regular lat-lon grids (1280 x 2560) using [`pyshtools`](https://shtools.github.io/SHTOOLS/index.html) (right now not included in this repository).
 
-We assume this gridded data to be stored in a hdf5 file for training and evaluation respectively containing a single dataset `/data` with dimensions `C x T x H x W`. These dimensions correspond to time, channel (/variable), height, and width respectively. Patches are then sampled from this hdf5 data and stored in `.tfrecords` files for training.
+We assume this gridded data to be stored in a hdf5 file for training and evaluation respectively containing a single dataset `/data` with dimensions `C x T x H x W`. These dimensions correspond to channel (/variable), time, height, and width respectively. Patches are then sampled from this hdf5 data and stored in `.tfrecords` files for training.
 
 In practice, these "master" files actually contained virtual datasets, while the actual data was stored as one hdf5 file per year. This is however not a hard requirement. The script to create these virtual datasets is currently not included in the repository but might be at a later point of time.
 
