@@ -1,61 +1,86 @@
-## Physics-Informed Resolution-Enhancing GANs (PhIRE GANs)
+# Towards Representation Learning for Atmospheric Dynamics (AtmoDist)
 
-This repository contains code for the model described in 
+> The prediction of future climate scenarios under anthropogenic forcing is critical to understand climate change and to assess the impact of potentially counter-acting technologies. Machine learning and hybrid techniques for this prediction rely on informative metrics that are sensitive to pertinent but often subtle influences. For atmospheric dynamics, a critical part of the climate system, no well established metric exists and visual inspection is currently still often used in practice. However, this "eyeball metric" cannot be used for machine learning where an algorithmic description is required. Motivated by the success of intermediate neural network activations as basis for learned metrics, e.g. in computer vision, we present a novel, self-supervised representation learning approach specifically designed for atmospheric dynamics. Our approach, called AtmoDist, trains a neural network on a simple, auxiliary task: predicting the temporal distance between elements of a randomly shuffled sequence of atmospheric fields (e.g. the components of the wind field from reanalysis or simulation). The task forces the network to learn important intrinsic aspects of the data as activations in its layers and from these hence a discriminative metric can be obtained. We demonstrate this by using AtmoDist to define a metric for GAN-based super resolution of vorticity and divergence. Our upscaled data matches both visually and in terms of its statistics a high resolution reference closely and it significantly outperform the state-of-the-art based on mean squared error. Since AtmoDist is unsupervised, only requires a temporal sequence of fields, and uses a simple auxiliary task, it has the potential to be of utility in a wide range of applications.
 
-Stengel K., Glaws A., Hettinger D., King R. "Adversarial super-resolution of climatological wind and solar data". PNAS July 21, 2020 117 (29) 16805-16815; first published July 6, 2020 https://doi.org/10.1073/pnas.1918964117
+Original implementation of 
+
+> *Hoffmann, Sebastian, and Christian Lessig. "Towards Representation Learning for Atmospheric Dynamics." arXiv preprint arXiv:2109.09076 (2021).* https://arxiv.org/abs/2109.09076
+
+presented as part of the NeurIPS 2021 Workshop on [Tackling Climate Change with Machine Learning](https://www.climatechange.ai/events/neurips2021)
+
+We would like to thank Stengel et al. for openly making available their implementation (https://github.com/NREL/PhIRE) of [Adversarial super-resolution of climatological wind and solar data](https://www.pnas.org/content/117/29/16805) on which we directly based the super-resolution part of this work.
+___
+### Requirements
+* tensorflow 1.15.5
+* pyshtools (for SR evaluation)
+* pyspharm (for SR evaluation)
+* h5py
+* hdf5plugin
+* dask.array
+
+### Installation
+`pip install -e ./`
+
+This also makes available multiple command line tools that provide easy access to preprocessing, training, and evaluation routines. It's recommended to install the project in a virtual environment as to not polutte the global PATH.
 
 ___
-### Table of Contents
-- [Requirements](https://github.com/NREL/PhIRE#requirements)
-- [Data](https://github.com/NREL/PhIRE#data)
-    - [WIND Toolkit & NSRDB](https://github.com/NREL/PhIRE#wind-toolkit--nsrdb)
-    - [CCSM](https://github.com/NREL/PhIRE#ccsm)
-- [Model Weights](https://github.com/NREL/PhIRE#model-weights)
-- [Running the Models](https://github.com/NREL/PhIRE#running-the-models)
+### CLI Tools
 
-### Requirements
-- Python v3.7
-- TensorFlow v1.12
-- numpy v1.15
-- matplotlib v3.1
+The provided CLI tools don't accept parameters but rather act as a shortcut to execute the corresponding script files. All parameters controlling the behaviour of the training etc. should thus be adjusted in the script files directly. We list both the command-line command, as well as the script file the command executes.
 
-A conda environment YML file, `tf_env.yml` has been provided for your convenience. 
+* `rplearn-data` ([python/phire/data_tool.py](https://github.com/sehoffmann/AtmoDist/blob/master/python/phire/data_tool.py))
+    * Samples patches and generates `.tfrecords` files from HDF5 data for the self-supervised representation-learning task.
+* `rplearn-train` ([python/phire/rplearn/train.py](https://github.com/sehoffmann/AtmoDist/blob/master/python/phire/rplearn/train.py))
+    * Trains the representation network. By toggling comments, the same script is also used for evaluation of the trained network.
+* `phire-data` ([python/phire/data_tool.py](https://github.com/sehoffmann/AtmoDist/blob/master/python/phire/data_tool.py))
+    * Samples patches and generates `.tfrecords` files from HDF5 data for the super-resolution task.
+* `phire-train` ([python/phire/main.py](https://github.com/sehoffmann/AtmoDist/blob/master/python/phire/main.py))
+    * Trains the SRGAN model using either MSE or a content-loss based on AtmoDist.
+* `phire-eval` ([python/phire/evaluation/cli.py](https://github.com/sehoffmann/AtmoDist/blob/master/python/phire/evaluation/cli.py))
+    * Evaluates trained SRGAN models using various metrics (e.g. energy spectrum, semivariogram, etc.). Generation of images is also part of this.
 
-### Data
+___
+### Project Structure
+* [python/phire](https://github.com/sehoffmann/AtmoDist/blob/master/python/phire)
+    * Mostly preserved from the Stengel et al. implementation, this directory contains the code for the SR training. `sr_network.py` contains the actual GAN model, whereas `PhIREGANs.py` contains the main training loop, data pipeline, as well as interference procedure.
+* [python/phire/rplearn](https://github.com/sehoffmann/AtmoDist/tree/master/python/phire/rplearn)
+    * Contains everything related to representation learning task, i.e. AtmoDist. The actual ResNet models are defined in `resnet.py`, while the training procedure can be found in `train.py`.
+* [python/phire/evaluation](https://github.com/sehoffmann/AtmoDist/tree/master/python/phire/evaluation)
+    * Dedicated to the evaluation of the super-resolved fields. The main configuration of the evaluation is done in `cli.py`, while the other files mostly correspond to specific evaluation metrics.
+* [python/phire/data](https://github.com/sehoffmann/AtmoDist/tree/master/python/phire/data)
+    * Static data shipped with the python package.
+* [python/phire/jetstream](https://github.com/sehoffmann/AtmoDist/tree/master/python/phire/jetstream)
+    * WiP: Prediction of jetstream latitude as downstream task.
+* [scripts/](https://github.com/sehoffmann/AtmoDist/tree/master/scripts/)
+    * Various utility scripts, e.g. used to generate some of the figures seen in the paper.
 
-##### WIND Toolkit & NSRDB
-LR, MR, and HR wind example data (from WIND Toolkit) can be found in `example_data/`. These datasets are from NREL's WIND Toolkit. The LR and MR data are to be used with the MR and HR models respectively. If you would like to use your own data for the super-resolution it must have the shape: (N_batch, height, width, [ua, va]). Example solar data (from NSRDB) can also be found in `example_data/` and can be treated in the same manner as the WIND Toolkit is treated. If you choose to use your own solar data it should have the shape: (N_batch, height, width, [DNI, DHI]).
-The scripts are designed to take in TFRecords. Methods for converting numpy arrays into compatible TFRecords are available in `utils.py`.
+___
+### Preparing the data
+AtmoDist is trained on vorticity and divergence fields from ERA5 reanalysis data. The data was directly obtained as spherical harmonic coefficients from model level 120, before being converted to regular lat-lon grids (1280 x 2560) using [`pyshtools`](https://shtools.github.io/SHTOOLS/index.html) (right now not included in this repository).
 
-##### CCSM
-If you would like to run the CCSM wind data through the pretrained PhIREGANs models, you can download the data from [here](https://esgf-node.llnl.gov/projects/esgf-llnl/) with the following:
-- project : CMIP5
-- model : CCSM4
-- experiment : 1% per year CO<sub>2</sub>
-- time_frequency : day
-- realm : atmos
-- ensemble : r2i1p1
-- version : 20130218
-- variables : ua, va (for wind), and rsds (for solar)
-CCSM solar data is converted from daily to hourly average values using the TAG model. The CCSM GHI data is split into DNI and DHI components using the DISC model.
+We assume this gridded data to be stored in a hdf5 file for training and evaluation respectively containing a single dataset `/data` with dimensions `T x C x H x W`. These dimensions correspond to time, channel (/variable), height, and width respectively. Patches are then sampled from this hdf5 data and stored in `.tfrecords` files for training.
 
-### Model Weights
-Model weights can be found in `models/`. The wind MR and HR models perform a 10x and 5x super-resolution respectively while both solar models perform a 5x super-resolution. Each model is designed to work on the distance scales they were trained on (100 to 10km or 10km to 2km/4km). If you wish to have a different amount of super-resolution you must train the models accordingly.
+In practice, these "master" files actually contained virtual datasets, while the actual data was stored as one hdf5 file per year. This is however not a hard requirement. The script to create these virtual datasets is currently not included in the repository but might be at a later point of time.
 
-### Running the Models
-An example of how to use the PhIRE GANs model for training and testing can be found in `main.py`.
+To sample patches for training or evaluation run `rplearn-data` and `phire-data`.
 
-#### References
-[1] Aguiar, R., and M. T. A. G. Collares-Pereira. "TAG: a time-dependent, autoregressive, Gaussian model for generating synthetic hourly radiation." Solar energy 49.3 (1992): 167-174.  
-[2] Maxwell, E.,"DISC Model." Excel Worksheet [link](https://www.nrel.gov/grid/solar-resource/disc.html)  
-[3] Holmgren, William F., Clifford W. Hansen, and Mark Mikofski. "pvlib python: a python package for modeling solar energy systems." J. Open Source Software 3.29 (2018): 884.  
-[4] Meehl, Gerald A., "CCSM4 model run for CMIP5 with 1\% increasing CO2" (2014). NCAR. doi:10.1594/WDCC/CMIP5.NRS4c1. Served by ESGF (Version 2) [Data set]. World Data Center for Climate (WDCC) at DKRZ.  
-[5] Taylor, Karl E., Ronald J. Stouffer, and Gerald A. Meehl. "An overview of CMIP5 and the experiment design." Bulletin of the American Meteorological Society 93.4 (2012): 485-498.  
-[6] Cinquini, Luca, et al. "The Earth System Grid Federation: An open infrastructure for access to distributed geospatial data." Future Generation Computer Systems 36 (2014): 400-417.  
-[7] Draxl, Caroline, et al. "The wind integration national dataset (wind) toolkit." Applied Energy 151 (2015): 355-366.  
-[8] Sengupta, Manajit, et al. "The national solar radiation data base (NSRDB)." Renewable and Sustainable Energy Reviews 89 (2018): 51-60.
+#### Normalization
+Normalization is done by the [phire/data_tool.py](https://github.com/sehoffmann/AtmoDist/blob/master/python/phire/data_tool.py) script. This procedure is opaque to the models and data is only de-normalized during evaluation. The mean and standard deviations used for normalization can be specified using `DataSampler.mean, DataSampler.std, DataSampler.mean_log1p, DataSampler.std_log1p`. If specified as `None`, then these statistics will be calculated from the dataset using [`dask`](https://docs.dask.org/en/stable/array.html) (this will take some time).
 
-#### Acknowledgments
-We acknowledge the World Climate Research Program’s Working Group on Coupled Modelling, which is responsible for CMIP, and we thank the climate modeling groups (listed CCSM section) for producing and making available their model output. For CMIP the U.S. Department of Energy’s Program for Climate Model Diagnosis and Intercomparison provides coordinating support and led development of software infrastructure in partnership with the Global Organization for Earth System Science Portals.
+___
+### Training the AtmoDist model
+1. Specify dataset location, model name, output location, and number of classes (i.e. max delta T) in [phire/rplearn/train.py](https://github.com/sehoffmann/AtmoDist/blob/master/python/phire/rplearn/train.py)
+2. Run training using `rplearn-train`
+3. Switch to evaluation by calling `evaluate_all()` and compute metrics on eval set
+4. Find optimal epoch and calculate normalization factors (for specific layer) using `calculate_loss()`
 
-This work was authored by the National Renewable Energy Laboratory (NREL), operated by Alliance for Sustainable Energy, LLC, for the U.S. Department of Energy (DOE) under Contract No. DE-AC36-08GO28308. This work was supported by the Laboratory Directed Research and Development (LDRD) Program at NREL. The research was performed using computational resources sponsored by the Department of Energy's Office of Energy Efficiency and Renewable Energy and located at the National Renewable Energy Laboratory. The views expressed in the article do not necessarily represent the views of the DOE or the U.S. Government. The U.S. Government retains and the publisher, by accepting the article for publication, acknowledges that the U.S. Government retains a nonexclusive, paid-up, irrevocable, worldwide license to publish or reproduce the published form of this work, or allow others to do so, for U.S. Government purposes.
+___
+### Training the SRGAN model
+1. Specify dataset location, model name, AtmoDist model to use, and training regimen in [phire/main.py](https://github.com/sehoffmann/AtmoDist/blob/master/python/phire/main.py)
+2. Run training using `phire-train`
+
+___
+### Evaluating the SRGAN models
+1. Specify dataset location, models to evaluate, output location, and metrics to calculate in [phire/evaluation/cli.py](https://github.com/sehoffmann/AtmoDist/blob/master/python/phire/evaluation/cli.py)
+2. Evaluate using `phire-eval`
+3. Toggle the if-statement to generate comparing plots and data between different models and rerun `phire-eval`
