@@ -44,7 +44,7 @@ class TemporalMetric(EvaluationMethod):
                 for c in range(C):
                     y = data[name][..., c]
                     smoothing_window = 30*8
-                    y_smoothed = np.convolve(y, np.arange(smoothing_window) / smoothing_window,  'valid')
+                    y_smoothed = np.convolve(y, np.ones(smoothing_window) / smoothing_window,  'valid')
 
                     fig, ax = plt.subplots(figsize=(5,3))
                     X = (smoothing_window//2 + np.arange(y_smoothed.shape[0])) / 8
