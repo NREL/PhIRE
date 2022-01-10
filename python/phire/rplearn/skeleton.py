@@ -111,17 +111,17 @@ class PretextModel:
         return x
 
 
-def load_model(dir):
+def load_model(dir, custom_objects=None):
     with open(Path(dir) / 'model.json', 'r') as f:
-        model = tf.keras.models.model_from_json(f.read())
+        model = tf.keras.models.model_from_json(f.read(), custom_objects)
 
-    model.load_weights(Path(dir) / 'model_weights.hdf5', by_name=True)
+    model.load_weights(str(Path(dir) / 'model_weights.hdf5'), by_name=True)
     return model
 
 
-def load_encoder(dir):
+def load_encoder(dir, custom_objects=None):
     with open(Path(dir) / 'encoder.json', 'r') as f:
-        model = tf.keras.models.model_from_json(f.read())
+        model = tf.keras.models.model_from_json(f.read(), custom_objects)
 
-    model.load_weights(Path(dir) / 'encoder_weights.hdf5', by_name=True)
+    model.load_weights(str(Path(dir) / 'encoder_weights.hdf5'), by_name=True)
     return model

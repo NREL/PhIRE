@@ -11,9 +11,9 @@ import json
 from pathlib import Path
 import pkg_resources
 
+
 def main():
     
-
     for c in range(2):
         files = glob(f'./*/wasserstein_dist_channel{c}.json')
         data = []

@@ -395,7 +395,7 @@ class PhIREGANs:
     def iterate_data(self, data_path, batch_size):
         idx, LR_out, HR_out, init_iter = self.make_train_ds(data_path, batch_size=batch_size, shuffle=False)
 
-        with tf.Session() as sess:
+        with tf.keras.backend.get_session() as sess:
             sess.run(init_iter)
 
             try:
@@ -486,7 +486,7 @@ class PhIREGANs:
 
 
     def make_train_ds(self, data_path, batch_size, shuffle=True):
-        ds = tf.data.TFRecordDataset(data_path, self.compression, num_parallel_reads=4)
+        ds = tf.data.TFRecordDataset(data_path, self.compression, num_parallel_reads=4 if shuffle else 1)
         ds = ds.map(lambda xx: self._parse_train_(xx, self.mu_sig))
 
         if shuffle:
