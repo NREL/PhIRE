@@ -11,7 +11,7 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import random
 import pandas as pd
-import scipy.optimize
+import sklearn.metrics
 
 from .skeleton import load_model, load_encoder
 from .resnet import Resnet101, ResnetSmall, Resnet18
@@ -63,7 +63,7 @@ def parse_train(serialized, append_latlon=False, discount=False, tmax=None):
 def make_train_ds(files, batch_size, n_shuffle=1000, compression_type='ZLIB', append_latlon=False, discount=False, tmax=None):
     assert files
 
-    ds = tf.data.TFRecordDataset(files, num_parallel_reads=3, compression_type=compression_type)
+    ds = tf.data.TFRecordDataset(files, num_parallel_reads=4 if n_shuffle else None, compression_type=compression_type)
     
     if n_shuffle:
         ds = ds.shuffle(n_shuffle)
@@ -88,15 +88,21 @@ class Train:
         
         self.data_path_eval = glob('/data2/rplearn/rplearn_eval_2000_2005.*.tfrecords')
         self.val_freq = 3
-        self.n_classes = 23
+        self.n_classes = 31
 
         self.resnet = ResnetSmall((160,160,2), self.n_classes, output_logits=False, shortcut='projection')
         #resnet = Resnet18((160,160,2), 16, output_logits=False, shortcut='projection')
         #resnet = Resnet101((160,160,2), 16, output_logits=False)
 
-        self.model_dir = Path('/data/final_models')
-        self.prefix = 'rnet-small-23c'
+        self.model_dir = Path('/data/final_rp_models')
+        self.prefix = 'rnet-small-abla-31c'
         self.description = '''
+        ABLATION STUDY
+        --------------
+        Each model trained on 9340 batches (128) -> ~20 patches per image
+        Training from 1979-1988 (20 years), eval on 2000-2005 (6 years)
+        normalized with f(x) = sign(x) = ln(1 + 0.2*x)
+
         # Model:
         Our small resnet architecture, 4 blocks with filters [16,32,64,128] and 6 residual blocks in each.
         Starts with strided 8x8x16 conv and 3x3 max-pool (stride 2) as in resnet.
@@ -107,14 +113,6 @@ class Train:
         batch-size: 128
         activation: relu
         initializer: he-normal
-
-        # Data:
-        full-res 160x160 patches with 3d lookahead
-        31 patches per image, 1979-1998 (20 years) -> 1.8 million patches (14.1k batches)
-        (full dataset size is 42 patches -> 2.45 million patches)            
-        eval on 2000-2005
-
-        normalized with f(x) = sign(x) = ln(1 + 0.2*x)
 
         # Input vars:
         divergence (log1p), relative_vorticity (log1p)
@@ -144,13 +142,18 @@ class Train:
             self.resnet.summary(f)
 
 
-    def setup_ds(self, tmax):
-        train_ds = make_train_ds(self.data_path_train, 128, n_shuffle=2000, tmax=tmax)
+    def setup_ds(self, tmax, batch_size=128):
+        train_ds = make_train_ds(self.data_path_train, batch_size, n_shuffle=2000, tmax=tmax)
         
         self.small_train_ds = train_ds.take(2000)  # order is shuffled but these are always the same 2000 batches 
-        self.train_ds = train_ds #train_ds.take(2*5400)  # for comparability
+        
+        if False:
+            self.train_ds = train_ds 
+        else:
+            # ablation study
+            self.train_ds = train_ds.take(9340)
 
-        self.eval_ds = make_train_ds(self.data_path_eval, 128, n_shuffle=None, tmax=tmax)
+        self.eval_ds = make_train_ds(self.data_path_eval, batch_size, n_shuffle=1, tmax=tmax)
 
 
     def train(self):
@@ -206,7 +209,7 @@ class Train:
     
     def evaluate_single(self, dir, on_train=False):
         if not self.train_ds:
-            self.setup_ds(tmax=self.n_classes)
+            self.setup_ds(tmax=self.n_classes, batch_size=256)
         
         model = load_model(dir)
 
@@ -216,14 +219,31 @@ class Train:
             metrics='categorical_accuracy'
         )
 
+        metrics = {
+            'loss': tf.keras.metrics.CategoricalCrossentropy(),
+            'accuracy': tf.keras.metrics.CategoricalAccuracy(),
+            'top3-accuracy': tf.keras.metrics.TopKCategoricalAccuracy(3)
+        }
+
         ds = self.train_ds if on_train else self.eval_ds
-        return model.evaluate(ds, verbose=1)
+        y_true = []
+        y_pred = []
+        for X, y, _ in ds:
+            preds = model(X, training=False)  # not the most efficient way, but the most comfortable one for sure
+            y_true.append(y)
+            y_pred.append(preds)
+
+        y_true = np.concatenate(y_true, axis=0)
+        y_pred = np.concatenate(y_pred, axis=0)
+
+        for name in metrics:
+            metrics[name].update_state(y_true, y_pred)
+            metrics[name] = metrics[name].result()
+
+        return y_true, y_pred, metrics
 
     
     def evaluate_all(self, dir, on_train=False):
-        if not self.train_ds:
-            self.setup_ds(tmax=self.n_classes)
-
         def extract_epoch(path):
             return int(os.path.relpath(path, dir)[5:])
 
@@ -231,15 +251,42 @@ class Train:
         model_dirs = glob(dir + '/epoch*/')      
         model_dirs = sorted(model_dirs, key=extract_epoch)
         
-        results = {}
+        
+        if not self.train_ds:
+            self.n_classes = load_model(model_dirs[0]).layers[-1].output_shape[-1]  # make sure that we setup the ds correctly
+            self.setup_ds(tmax=self.n_classes, batch_size=256)
 
+        results = {}
         for mdir in model_dirs:
             print(f'evaluating {mdir}')
             epoch = extract_epoch(mdir)
-            results[epoch] = self.evaluate_single(mdir)
+
+            y_true, y_pred, metrics = self.evaluate_single(mdir) 
+            results[epoch] = {k: float(v) for k,v in metrics.items()}
+
+            # confusion matrix
+            cm = sklearn.metrics.confusion_matrix(np.argmax(y_true, axis=1), np.argmax(y_pred, axis=1))
+            np.savetxt(mdir + '/confusion_matrix.csv', cm)
+            
+            cm_normalized = cm / np.sum(cm, axis=0, keepdims=True)
+            fig, ax = plt.subplots(figsize=(5,5))
+            im = ax.imshow(cm_normalized, interpolation='nearest', aspect='equal', vmin=0, vmax=1)
+            fig.colorbar(im, fraction=0.046, pad=0.05)
+            ax.set_xlabel('predicted')
+            ax.set_ylabel('actual')
+            ax.xaxis.set_major_formatter(lambda x, pos: f'{3 + x*3:.0f}h')
+            ax.yaxis.set_major_formatter(lambda x, pos: f'{3 + x*3:.0f}h')
+
+            fig.savefig(mdir + '/confusion_matrix.png', bbox_inches='tight')
+            fig.savefig(mdir + '/confusion_matrix.pdf', bbox_inches='tight')
+            plt.close(fig)
+ 
+            metric_strings = {k: f"{v:.3f}" for k,v in results[epoch].items()}
+            print(f'epoch {epoch}: {metric_strings}')
+
 
         df = pd.DataFrame.from_dict(results, orient='index')
-        df.columns = ['loss', 'accuracy']
+        df.columns = ['loss', 'accuracy', 'top3-accuracy']
         df.index.name = 'epoch'
         df.to_csv(dir + '/evaluation.csv')
 
@@ -310,10 +357,27 @@ class Train:
 
 def main():
     #Train().run()
-    #Train().evaluate_all('/data/final_rp_models/rnet-small-23c_2021-09-09_1831')
-    Train().evaluate_loss('/data/final_rp_models/rnet-small-23c_2021-09-09_1831/epoch27', layer=196)
-    Train().evaluate_loss('/data/final_rp_models/rnet-small-23c_2021-09-09_1831/epoch27', layer=148)
 
+    _dir = '/data/final_rp_models/rnet-small-23c_2021-09-09_1831'
+    Train().evaluate_all(_dir)
+    Train().evaluate_loss(_dir + '/epoch27', layer=196)
+    Train().evaluate_loss(_dir + '/epoch27', layer=148)
+
+    _dir = '/data/final_rp_models/rnet-small-abla-15c_2021-09-22_1623'
+    Train().evaluate_all(_dir)
+    Train().evaluate_loss(_dir + '/epoch26', layer=196)
+    Train().evaluate_loss(_dir + '/epoch26', layer=148)
+
+
+    _dir = '/data/final_rp_models/rnet-small-abla-23c_2021-10-02_1508'
+    Train().evaluate_all(_dir)
+    Train().evaluate_loss(_dir + '/epoch33', layer=196)
+    Train().evaluate_loss(_dir + '/epoch33', layer=148)
+
+    _dir = '/data/final_rp_models/rnet-small-abla-31c_2021-10-10_1702'
+    Train().evaluate_all(_dir)
+    Train().evaluate_loss(_dir + '/epoch33', layer=196)
+    Train().evaluate_loss(_dir + '/epoch33', layer=148)
 
 if __name__ == '__main__':
     main()
