@@ -19,6 +19,14 @@ from ..data_tool import parse_samples
 from .callbacks import CSVLogger, ModelSaver
 
 
+def plot_confusion(mdir, y_true, y_pred):
+    # confusion matrix
+    cm = sklearn.metrics.confusion_matrix(np.argmax(y_true, axis=1), np.argmax(y_pred, axis=1))
+    np.savetxt(mdir + '/confusion_matrix.csv', cm)
+    
+   
+
+
 def parse_train(serialized, append_latlon=False, discount=False, tmax=None):
     examples = parse_samples(serialized)
 
@@ -147,7 +155,7 @@ class Train:
         
         self.small_train_ds = train_ds.take(2000)  # order is shuffled but these are always the same 2000 batches 
         
-        if False:
+        if True:
             self.train_ds = train_ds 
         else:
             # ablation study
@@ -240,7 +248,10 @@ class Train:
             metrics[name].update_state(y_true, y_pred)
             metrics[name] = metrics[name].result()
 
-        return y_true, y_pred, metrics
+        # confusion matrix
+        cm = sklearn.metrics.confusion_matrix(np.argmax(y_true, axis=1), np.argmax(y_pred, axis=1))
+
+        return y_true, y_pred, metrics, cm
 
     
     def evaluate_all(self, dir, on_train=False):
@@ -251,7 +262,6 @@ class Train:
         model_dirs = glob(dir + '/epoch*/')      
         model_dirs = sorted(model_dirs, key=extract_epoch)
         
-        
         if not self.train_ds:
             self.n_classes = load_model(model_dirs[0]).layers[-1].output_shape[-1]  # make sure that we setup the ds correctly
             self.setup_ds(tmax=self.n_classes, batch_size=256)
@@ -261,26 +271,11 @@ class Train:
             print(f'evaluating {mdir}')
             epoch = extract_epoch(mdir)
 
-            y_true, y_pred, metrics = self.evaluate_single(mdir) 
+            y_true, y_pred, metrics, cm = self.evaluate_single(mdir) 
             results[epoch] = {k: float(v) for k,v in metrics.items()}
 
-            # confusion matrix
-            cm = sklearn.metrics.confusion_matrix(np.argmax(y_true, axis=1), np.argmax(y_pred, axis=1))
             np.savetxt(mdir + '/confusion_matrix.csv', cm)
-            
-            cm_normalized = cm / np.sum(cm, axis=0, keepdims=True)
-            fig, ax = plt.subplots(figsize=(5,5))
-            im = ax.imshow(cm_normalized, interpolation='nearest', aspect='equal', vmin=0, vmax=1)
-            fig.colorbar(im, fraction=0.046, pad=0.05)
-            ax.set_xlabel('predicted')
-            ax.set_ylabel('actual')
-            ax.xaxis.set_major_formatter(lambda x, pos: f'{3 + x*3:.0f}h')
-            ax.yaxis.set_major_formatter(lambda x, pos: f'{3 + x*3:.0f}h')
 
-            fig.savefig(mdir + '/confusion_matrix.png', bbox_inches='tight')
-            fig.savefig(mdir + '/confusion_matrix.pdf', bbox_inches='tight')
-            plt.close(fig)
- 
             metric_strings = {k: f"{v:.3f}" for k,v in results[epoch].items()}
             print(f'epoch {epoch}: {metric_strings}')
 
@@ -291,14 +286,20 @@ class Train:
         df.to_csv(dir + '/evaluation.csv')
 
 
-    def calc_loss(self, dir, on_train, layer=-1):
+    def calc_loss(self, dir, on_train, loss_func, layer=-1):
         if dir:
             encoder = load_encoder(dir)
             inp = encoder.input
             out = encoder.layers[layer].output
             encoder = tf.keras.Model(inputs=inp, outputs=out)
         else:
-            encoder = tf.identity
+            def denorm(x):
+                y = x * [1.5794525e-1, 1.6044095e-1] + [8.821452e-4, 3.2483143e-4]
+                y =  tf.math.sign(y) * tf.math.expm1(tf.math.abs(y)) / 0.2  # alpha=0.2
+                return y
+                #return y*[2.8568757e-5, 5.0819430e-5] + [1.9464334e-8, 2.0547947e-7]
+            
+            encoder = denorm
 
         img1 = tf.keras.Input(shape=[160,160,2], name='img1_inp')
         img2 = tf.keras.Input(shape=[160,160,2], name='img2_inp')
@@ -306,23 +307,22 @@ class Train:
         r1 = encoder(img1)
         r2 = encoder(img2)
 
-        sq_diffs = tf.math.squared_difference(r1, r2)
-        l2 = tf.math.reduce_mean(sq_diffs, axis=[1,2,3])
-
-        model = tf.keras.Model(inputs={'img1': img1, 'img2': img2}, outputs=l2)
+        #loss = loss_func(r1, r2)
+        model = tf.keras.Model(inputs={'img1': img1, 'img2': img2}, outputs=[r1,r2])
 
         self.setup_ds(tmax=None)
         ds = self.train_ds if on_train else self.eval_ds
 
         samples = {}
-        for X,y,weight in ds.take(2000):
-            preds = model(X)
+        for X,y,weight in ds.take(1000):
+            r1,r2 = model(X, training=False)
+            losses = loss_func(r1, r2)
             labels = np.argmax(y, axis=1)
 
-            for pred, label in zip(preds, labels):
+            for loss, label in zip(losses, labels):
                 if label not in samples:
                     samples[label] = []
-                samples[label].append(pred)
+                samples[label].append(loss)
 
         # potentially unsafe (not guaranteed to be contained), but should be ok
         means = np.asarray([np.mean(samples[i]) for i in sorted(samples)])
@@ -336,22 +336,63 @@ class Train:
             encoder = load_encoder(dir)
             layer = len(encoder.layers) + layer
 
-        mse_means, mse_stds = self.calc_loss(None, on_train, layer)
-        layer_means, layers_stds = self.calc_loss(dir, on_train, layer)
+        def l1(r1, r2):
+            diffs = tf.math.abs(r1 - r2)
+            return tf.math.reduce_mean(diffs, axis=[1,2,3])
 
-        df = pd.DataFrame({'mse_mean': mse_means, 'mse_std': mse_stds, 'layer_mean': layer_means, 'layer_std': layers_stds})
-        df.to_csv(dir + f'/layer{layer}_loss.csv')
+        def l2(r1, r2):
+            sq_diffs = tf.math.squared_difference(r1, r2)
+            return tf.math.reduce_mean(sq_diffs, axis=[1,2,3])
+
+        def psnr(r1, r2):
+            mse = l2(r1, r2)
+            maximum = tf.math.reduce_max(tf.math.abs(tf.concat([r1, r2], 0)))
+            psnr =  20. * tf.math.log(maximum) / tf.math.log(10.) - 10. * tf.math.log(mse) / tf.math.log(10.)
+            return 50-psnr
+
+        def ssim(r1, r2):
+            minimum = tf.math.reduce_min(tf.concat([r1, r2], 0))
+            maximum = tf.math.reduce_max(tf.concat([r1, r2], 0))
+            return 1 - (1+tf.image.ssim(r1 - minimum, r2 - minimum, maximum - minimum)) / 2
+            #return tf.math.reduce_mean(ssim, axis=[1,2,3])
+
+
+        metrics = {
+            'l1': l1,
+            'l2': l2,
+            'psnr': psnr,
+            'ssim': ssim
+        }
+
+        def optimize_alpha(m, c):
+            # C = sum_i=1^N (alpha*l_i - m_i)**2
+            #   = sum_i=1^N alpha^2*l_i^2 - 2*alpha*l_i*m_i + m_i^2
+            #   = (sum l_i^2)*alpha^2 - 2*(sum l_i*m_i)*alpha + (sum m_i^2)
+            #
+            # dC/dalpha = 2*(sum l_i^2)*alpha - 2*(sum l_i*m_i) = 0
+            # =>  alpha = (sum l_i*m_i) / (sum l_i^2)
+            N = c.shape[0]
+            return np.sum(c[N//2:] * m[N//2:]) / np.sum(c[N//2:]**2)
+
+        # content loss is always computed as l2
+        content_loss_mean, content_loss_std = self.calc_loss(dir, on_train, l2, layer)
         
-        # C = sum_i=1^N (alpha*l_i - m_i)**2
-        #   = sum_i=1^N alpha^2*l_i^2 - 2*alpha*l_i*m_i + m_i^2
-        #   = (sum l_i^2)*alpha^2 - 2*(sum l_i*m_i)*alpha + (sum m_i^2)
-        #
-        # dC/dalpha = 2*(sum l_i^2)*alpha - 2*(sum l_i*m_i) = 0
-        # =>  alpha = (sum l_i*m_i) / (sum l_i^2)
-        N = layer_means.shape[0]
-        alpha = np.sum(layer_means[N//2:] * mse_means[N//2:]) / np.sum(layer_means[N//2:]**2)
+        loss_means = {}
+        for name, metric in metrics.items():
+            metric_mean, metric_std = self.calc_loss(None, on_train, metric, layer)
+            loss_means[name] = metric_mean
+            alpha = optimize_alpha(metric_mean, content_loss_mean)
+            df = pd.DataFrame({
+                'metric_mean': metric_mean, 
+                'metric_std': metric_std, 
+                'content_loss_mean': content_loss_mean, 
+                'content_loss_std': content_loss_std,
+                'alpha': [alpha] * len(metric_mean)
+            })
+            df.to_csv(dir + f'/layer{layer}_{name}_loss.csv')
+        
+        alpha = optimize_alpha(loss_means['l2'], content_loss_mean)
         print(f'alpha={alpha}')
-
         with open(dir + f'/layer{layer}_scale.txt', 'w') as f:
             f.write(str(alpha))
 
@@ -360,9 +401,10 @@ def main():
 
     _dir = '/data/final_rp_models/rnet-small-23c_2021-09-09_1831'
     Train().evaluate_all(_dir)
-    Train().evaluate_loss(_dir + '/epoch27', layer=196)
-    Train().evaluate_loss(_dir + '/epoch27', layer=148)
+    #Train().evaluate_loss(_dir + '/epoch27', layer=196)
+    #Train().evaluate_loss(_dir + '/epoch27', layer=148)
 
+    """
     _dir = '/data/final_rp_models/rnet-small-abla-15c_2021-09-22_1623'
     Train().evaluate_all(_dir)
     Train().evaluate_loss(_dir + '/epoch26', layer=196)
@@ -378,6 +420,7 @@ def main():
     Train().evaluate_all(_dir)
     Train().evaluate_loss(_dir + '/epoch33', layer=196)
     Train().evaluate_loss(_dir + '/epoch33', layer=148)
+    """
 
 if __name__ == '__main__':
     main()

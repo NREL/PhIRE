@@ -5,7 +5,7 @@ from matplotlib.transforms import blended_transform_factory
 from matplotlib.ticker import PercentFormatter
 
 
-DIR = '/data/final_rp_models/rnet-small-23c_2021-09-09_1831'
+DIR = '/data/final_rp_models/rnet-small-abla-31c_2021-10-10_1702/'
 
 if __name__ == '__main__':
     sns.set_theme('paper')
@@ -20,7 +20,7 @@ if __name__ == '__main__':
     
     with sns.color_palette('deep'):
         # loss plot
-        fig0, ax0 = plt.subplots(figsize=(3.5, 3.0))
+        fig0, ax0 = plt.subplots(figsize=(3, 2.0))
         ax0.plot(train.epoch - 19, train.loss, label='training set')
         ax0.plot(eval.epoch + 1, eval.loss, label='evaluation set')
         
@@ -34,7 +34,7 @@ if __name__ == '__main__':
 
 
         # acc plot
-        fig1, ax1 = plt.subplots(figsize=(3.5, 3.0))
+        fig1, ax1 = plt.subplots(figsize=(3.0, 2.0))
         ax1.plot(train.epoch - 19, train.categorical_accuracy, label='training set')
         ax1.plot(eval.epoch + 1, eval.accuracy, label='evaluation set')
         
