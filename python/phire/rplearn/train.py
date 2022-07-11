@@ -1,7 +1,7 @@
 import os
 
 from numpy.core.defchararray import asarray
-#os.environ["CUDA_VISIBLE_DEVICES"]="-1" 
+os.environ["CUDA_VISIBLE_DEVICES"]="-1" 
 
 import tensorflow as tf
 import numpy as np
@@ -15,6 +15,7 @@ import sklearn.metrics
 
 from .skeleton import load_model, load_encoder
 from .resnet import Resnet101, ResnetSmall, Resnet18
+from .autoencoder import AutoencoderSmall
 from ..data_tool import parse_samples
 from .callbacks import CSVLogger, ModelSaver
 
@@ -27,7 +28,7 @@ def plot_confusion(mdir, y_true, y_pred):
    
 
 
-def parse_train(serialized, append_latlon=False, discount=False, tmax=None):
+def parse_train(serialized, append_latlon=False, tmax=None, autoencoder=False):
     examples = parse_samples(serialized)
 
     N = tf.cast(tf.shape(examples['H'])[0], tf.int64)
@@ -57,18 +58,17 @@ def parse_train(serialized, append_latlon=False, discount=False, tmax=None):
         patch1 = tf.concat([patch1, lat_cos, lat_sin, lon_cos, lon_sin], axis=-1)
         patch2 = tf.concat([patch2, lat_cos, lat_sin, lon_cos, lon_sin], axis=-1)
 
-    if discount:
-        weights = tf.where(examples['label'] <= (T_max // 2), 1.9, 0.1)  # scale by 1.9 to get comparable losses
+    if autoencoder:
+        X = {'img1': patch1}
+        y = patch1
     else:
-        weights = tf.broadcast_to(1.0, (N,))
+        X = {'img1': patch1, 'img2': patch2}
+        y = labels
 
-    X = {'img1': patch1, 'img2': patch2}
-    y = labels
-
-    return X, y, weights
+    return X, y
 
 
-def make_train_ds(files, batch_size, n_shuffle=1000, compression_type='ZLIB', append_latlon=False, discount=False, tmax=None):
+def make_train_ds(files, batch_size, n_shuffle=1000, compression_type='ZLIB', append_latlon=False, tmax=None, autoencoder=False):
     assert files
 
     ds = tf.data.TFRecordDataset(files, num_parallel_reads=4 if n_shuffle else None, compression_type=compression_type)
@@ -77,9 +77,12 @@ def make_train_ds(files, batch_size, n_shuffle=1000, compression_type='ZLIB', ap
         ds = ds.shuffle(n_shuffle)
 
     ds = ds.batch(1)
-    ds = ds.map(lambda x: parse_train(x, append_latlon, discount, tmax))
+    ds = ds.map(lambda x: parse_train(x, append_latlon, tmax, autoencoder))
     ds = ds.unbatch()
-    ds = ds.filter(lambda X, y, weight: tf.math.reduce_sum(y) == 1)
+    
+    if not autoencoder:
+        ds = ds.filter(lambda X, y: tf.math.reduce_sum(y) == 1)
+    
     ds = ds.batch(batch_size)
     
     # not required anymore
@@ -94,42 +97,20 @@ class Train:
         paths = glob('/data2/rplearn/rplearn_train_1979_1998.*.tfrecords')
         self.data_path_train = paths
         
-        self.data_path_eval = glob('/data2/rplearn/rplearn_eval_2000_2005.*.tfrecords')
+        self.data_path_eval = glob('/data/rplearn/rplearn_eval_2000_2005.*.tfrecords')
         self.val_freq = 3
         self.n_classes = 31
+        self.is_autoencoder = True
 
-        self.resnet = ResnetSmall((160,160,2), self.n_classes, output_logits=False, shortcut='projection')
+        #self.resnet = ResnetSmall(shape=(160,160,2), n_classes=self.n_classes, output_logits=False, shortcut='projection')
         #resnet = Resnet18((160,160,2), 16, output_logits=False, shortcut='projection')
         #resnet = Resnet101((160,160,2), 16, output_logits=False)
+        self.resnet = AutoencoderSmall(shape=(160,160,2), shortcut='projection')
 
         self.model_dir = Path('/data/final_rp_models')
-        self.prefix = 'rnet-small-abla-31c'
+        self.prefix = 'autoencoder'
         self.description = '''
-        ABLATION STUDY
-        --------------
-        Each model trained on 9340 batches (128) -> ~20 patches per image
-        Training from 1979-1988 (20 years), eval on 2000-2005 (6 years)
-        normalized with f(x) = sign(x) = ln(1 + 0.2*x)
-
-        # Model:
-        Our small resnet architecture, 4 blocks with filters [16,32,64,128] and 6 residual blocks in each.
-        Starts with strided 8x8x16 conv and 3x3 max-pool (stride 2) as in resnet.
-
-        tail consists of two 3x3x128 convs with BN
-
-        l2-reg:     1e-4
-        batch-size: 128
-        activation: relu
-        initializer: he-normal
-
-        # Input vars:
-        divergence (log1p), relative_vorticity (log1p)
-
-        # Training:
-        SGD with momentum=0.9
-        lr gets reduced on plateau by one order of magnitude, starting with 1e-1
-
-        pretraining with reduced dataset set size (2000 batches -> 256k) is neccessary and done for 20 epochs
+        Auotencoder
         '''
 
         self.start_time = datetime.today()
@@ -151,7 +132,7 @@ class Train:
 
 
     def setup_ds(self, tmax, batch_size=128):
-        train_ds = make_train_ds(self.data_path_train, batch_size, n_shuffle=2000, tmax=tmax)
+        train_ds = make_train_ds(self.data_path_train, batch_size, n_shuffle=2000, tmax=tmax, autoencoder=self.is_autoencoder)
         
         self.small_train_ds = train_ds.take(2000)  # order is shuffled but these are always the same 2000 batches 
         
@@ -161,16 +142,17 @@ class Train:
             # ablation study
             self.train_ds = train_ds.take(9340)
 
-        self.eval_ds = make_train_ds(self.data_path_eval, batch_size, n_shuffle=1, tmax=tmax)
+        self.eval_ds = make_train_ds(self.data_path_eval, batch_size, n_shuffle=1, tmax=tmax, autoencoder=self.is_autoencoder)
 
 
     def train(self):
+        self.setup_dir()
         self.setup_ds(tmax=self.n_classes)
 
         loss = tf.keras.losses.CategoricalCrossentropy(from_logits=False),
         metrics = 'categorical_accuracy'
 
-        csv_logger = CSVLogger(self.checkpoint_dir / 'training.csv', keys=['lr', 'loss', 'categorical_accuracy', 'val_loss', 'val_categorical_accuracy'], append=True, separator=' ')
+        csv_logger = CSVLogger(str(self.checkpoint_dir / 'training.csv'), keys=['lr', 'loss', 'categorical_accuracy', 'val_loss', 'val_categorical_accuracy'], append=True, separator=' ')
         saver = ModelSaver(self.checkpoint_dir)
         lr_reducer = tf.keras.callbacks.ReduceLROnPlateau('loss', min_delta=4e-2, min_lr=1e-5, patience=8)
         callbacks = [csv_logger]
@@ -208,11 +190,39 @@ class Train:
             initial_epoch=0
         )
 
-
-    def run(self):
-        print('TRAINING DATASET NOT COMPLETE, MOVE FROM /data TO /data2!')
+    def train_autoencoder(self):
         self.setup_dir()
-        self.train()
+        self.setup_ds(tmax=0)
+
+        loss = tf.keras.losses.MeanSquaredError(),
+        metrics = []
+
+        csv_logger = CSVLogger(str(self.checkpoint_dir / 'training.csv'), keys=['lr', 'loss', 'val_loss'], append=True, separator=' ')
+        saver = ModelSaver(self.checkpoint_dir)
+        lr_reducer = tf.keras.callbacks.ReduceLROnPlateau('loss', min_delta=4e-2, min_lr=1e-5, patience=8)
+        callbacks = [csv_logger, lr_reducer, saver]
+
+        optimizer = tf.keras.optimizers.SGD(momentum=0.9, clipnorm=5.0)
+
+        self.resnet.model.compile(
+            optimizer=optimizer,
+            loss=loss,
+            metrics=metrics
+        )    
+
+        self.resnet.model.optimizer.learning_rate.assign(1e-1)
+        
+        # training
+        callbacks += [lr_reducer, saver]  # only activate now
+        self.resnet.model.fit(
+            self.train_ds, 
+            validation_data=self.eval_ds, 
+            validation_freq=self.val_freq, 
+            epochs=60, 
+            callbacks=callbacks,
+            verbose=1,
+            initial_epoch=0
+        )
 
     
     def evaluate_single(self, dir, on_train=False):
@@ -397,10 +407,11 @@ class Train:
             f.write(str(alpha))
 
 def main():
-    #Train().run()
+    Train().train_autoencoder()
+    #Train().train()
 
-    _dir = '/data/final_rp_models/rnet-small-23c_2021-09-09_1831'
-    Train().evaluate_all(_dir)
+    _#dir = '/data/final_rp_models/rnet-small-23c_2021-09-09_1831'
+    #Train().evaluate_all(_dir)
     #Train().evaluate_loss(_dir + '/epoch27', layer=196)
     #Train().evaluate_loss(_dir + '/epoch27', layer=148)
 
