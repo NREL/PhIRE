@@ -1,7 +1,7 @@
 import os
 
 from numpy.core.defchararray import asarray
-os.environ["CUDA_VISIBLE_DEVICES"]="-1" 
+#os.environ["CUDA_VISIBLE_DEVICES"]="-1" 
 
 import tensorflow as tf
 import numpy as np
@@ -59,8 +59,9 @@ def parse_train(serialized, append_latlon=False, tmax=None, autoencoder=False):
         patch2 = tf.concat([patch2, lat_cos, lat_sin, lon_cos, lon_sin], axis=-1)
 
     if autoencoder:
-        X = {'img1': patch1}
-        y = patch1
+        both = tf.concat([patch1, patch2], axis=0)
+        X = {'img1': both}
+        y = both
     else:
         X = {'img1': patch1, 'img2': patch2}
         y = labels
@@ -210,10 +211,9 @@ class Train:
             metrics=metrics
         )    
 
-        self.resnet.model.optimizer.learning_rate.assign(1e-1)
+        self.resnet.model.optimizer.learning_rate.assign(1e-2)
         
         # training
-        callbacks += [lr_reducer, saver]  # only activate now
         self.resnet.model.fit(
             self.train_ds, 
             validation_data=self.eval_ds, 
@@ -221,7 +221,9 @@ class Train:
             epochs=60, 
             callbacks=callbacks,
             verbose=1,
-            initial_epoch=0
+            initial_epoch=0,
+            #steps_per_epoch=200,
+            validation_steps=1000,
         )
 
     

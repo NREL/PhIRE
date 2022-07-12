@@ -1,9 +1,9 @@
 import tensorflow as tf
 from tensorflow.keras.layers import Add, MaxPool2D, UpSampling2D
-from .skeleton import PretextModel, BaseModel
+from .skeleton import CommonLayers, PretextModel, BaseModel
 
 
-class ResnetBase(BaseModel):
+class ResnetBase(CommonLayers):
 
     def __init__(self, shortcut='padded', **kwargs):
         assert shortcut == 'padded' or shortcut == 'projection'
@@ -75,11 +75,6 @@ class ResnetBase(BaseModel):
             # up-conv always projects
 
         return shortcut
-
-
-
-
-    
 
 
 class ResnetPretextModel(PretextModel, ResnetBase):

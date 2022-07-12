@@ -5,37 +5,11 @@ import os
 from ..utils import json_to_tf1
 
 
-class BaseModel:
-    def __init__(self, shape, activation='relu', regularizer=None, name='model', **kwargs):
+class CommonLayers:
+    def __init__(self, activation='relu', regularizer=None, **kwargs):
         self.activation = activation
         self.regularizer = regularizer
-        self.shape = shape
-        self.name = name
         super().__init__(**kwargs)
-
-        self.model = self.build_model()
-        self.model.wrapper = self
-
-
-    def build_model(self):
-        raise NotImplemented()
-
-    def load_weights(self, dir):
-        self.model.load_weights(Path(dir) / 'model_weights.hdf5')
-
-
-    def save(self, dir):
-        dir = Path(dir)
-        os.makedirs(dir)
-
-        with open(dir / 'model.json', 'w') as f:
-            f.write(json_to_tf1(self.model.to_json()))
-
-        self.model.save_weights(dir / 'model_weights.hdf5', save_format='h5')
-   
-
-    def summary(self, file=None):
-        self.model.summary(print_fn=lambda x: print(x, file=file))    
 
 
     def conv(self, x, filters, kernel, name, **kwargs):
@@ -79,28 +53,50 @@ class BaseModel:
         return x
 
 
-class EncoderDecoderModel(BaseModel):
+class BaseModel:
+    def __init__(self, shape, name='model', **kwargs):
+        self.shape = shape
+        self.name = name
+        super().__init__(**kwargs)
 
-    def build_encoder(self):
-        raise NotImplementedError()
+        self.model = self.build_model()
+        self.model.wrapper = self
+
+    def build_model(self):
+        raise NotImplemented()
 
     def load_weights(self, dir):
-        self.model.load_weights(Path(dir) / 'model_weights.hdf5')
+        self.model.load_weights(str(Path(dir) / 'model_weights.hdf5'))
 
 
     def save(self, dir):
         dir = Path(dir)
         os.makedirs(dir)
-    
-        with open(dir / 'encoder.json', 'w') as f:
-            f.write(json_to_tf1(self.encoder.to_json()))
 
         with open(dir / 'model.json', 'w') as f:
             f.write(json_to_tf1(self.model.to_json()))
 
-        self.encoder.save_weights(dir / 'encoder_weights.hdf5', save_format='h5')
-        self.model.save_weights(dir / 'model_weights.hdf5', save_format='h5')
+        self.model.save_weights(str(dir / 'model_weights.hdf5'), save_format='h5')
    
+
+    def summary(self, file=None):
+        self.model.summary(print_fn=lambda x: print(x, file=file))    
+
+
+class EncoderDecoderModel(BaseModel):
+
+    def build_encoder(self):
+        raise NotImplementedError()
+
+
+    def save(self, dir):
+        BaseModel.save(self, dir)
+
+        with open(dir / 'encoder.json', 'w') as f:
+            f.write(json_to_tf1(self.encoder.to_json()))
+
+        self.encoder.save_weights(str(dir / 'encoder_weights.hdf5'), save_format='h5')
+        
 
     def summary(self, file=None):
         self.encoder.summary(print_fn=lambda x: print(x, file=file))
