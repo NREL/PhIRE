@@ -1,3 +1,8 @@
 matplotlib
 pyspharm
 pyshtools
+pandas
+sklearn
+xarray
+hdf5plugin
+dask
