@@ -8,7 +8,7 @@ from phire.utils import Welford
 
 
 def _plot_semivariogram(lags, data):
-    fig, ax = plt.subplots(figsize=(5.5,2.75))
+    fig, ax = plt.subplots(figsize=(4,2.5))
     #ax.set_yscale('log')
     ax.set_xscale('log')
 

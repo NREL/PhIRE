@@ -10,7 +10,9 @@ from .base import EvaluationMethod
 
 
 def _plot_spectrum_200(data):
-    fig, ax = plt.subplots(figsize=(5.5, 2.75))
+    #fig, ax = plt.subplots(figsize=(5.5, 2.75))
+    fig, ax = plt.subplots(figsize=(4,2.5))
+
 
     for name, spectrum in data.items():
         x = np.arange(1, 1+spectrum.shape[0])
@@ -84,7 +86,7 @@ class PowerSpectrum(EvaluationMethod):
 
     def __init__(self, H,W):
         super(PowerSpectrum, self).__init__()
-        self.spharm = Spharmt(W,H, legfunc='stored')
+        #self.spharm = Spharmt(W,H, legfunc='stored')
         self.spectrums = []
 
         self.needs_sh = True

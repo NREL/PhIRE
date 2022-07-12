@@ -34,7 +34,9 @@ class TemporalMetric(EvaluationMethod):
                 df = pd.DataFrame.from_dict({name: data[name][..., c] for name in data})
                 df = pd.melt(df, var_name='model', value_name=label)
 
-                g = sns.displot(x=label, hue='model', bins=35, height=2.5, aspect=2.0, data=df)
+                #g = sns.displot(x=label, hue='model', bins=35, height=3.0, aspect=1.0, data=df, palette=['C1', 'C2', 'C3', 'C4'])
+                g = sns.displot(x=label, hue='model', bins=35, height=2.5, aspect=1.5, data=df)
+                sns.move_legend(g, 'upper center', ncol=3, title=None)
                 g.fig.savefig(outdir / f'error_histogram_{c}.png', bbox_inches='tight')
                 g.fig.savefig(outdir / f'error_histogram_{c}.pdf', bbox_inches='tight')
                 plt.close(g.fig)
@@ -46,7 +48,7 @@ class TemporalMetric(EvaluationMethod):
                     smoothing_window = 30*8
                     y_smoothed = np.convolve(y, np.ones(smoothing_window) / smoothing_window,  'valid')
 
-                    fig, ax = plt.subplots(figsize=(5,3))
+                    fig, ax = plt.subplots(figsize=(4.2,2.5))
                     X = (smoothing_window//2 + np.arange(y_smoothed.shape[0])) / 8
                     ax.plot(X, y_smoothed, label='smoothed')
                     #ax.plot(X[2:-2], y[2:-2], alpha=0.5, ls=':', color='grey', label='raw')

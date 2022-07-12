@@ -89,7 +89,8 @@ class Histogram(EvaluationMethod):
                 plt.close(g.fig)
 
                 # kde
-                g = sns.displot(x=channel_name, hue='model', kind='kde', data=data_df, bw_adjust=.5, clip=(-7e-5, 7e-5), cut=0.5, height=3.0, aspect=1.25) 
+                g = sns.displot(x=channel_name, hue='model', kind='kde', data=data_df, bw_adjust=.5, clip=(-7e-5, 7e-5), cut=0.5, height=2.5, aspect=1.25) 
+                sns.move_legend(g, 'upper right', title=None)
                 g.set(yscale='log')
                 for line2d in g.ax.get_lines()[:-1]:
                     line2d.set_linestyle(':')

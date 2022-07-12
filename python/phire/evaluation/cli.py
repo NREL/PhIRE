@@ -1,5 +1,4 @@
 import matplotlib
-from numpy.core.fromnumeric import trace
 matplotlib.use('Agg')  # this results in considerable plotting speedup and enables multiprocessing + non-interactive work
 
 import os
@@ -99,6 +98,7 @@ def _process_metric(paths, metric_name, metric):
     Helper function used by Evaluation.summarize().
     Needs to be global to be pickleable.
     """
+    print(paths, metric_name, metric)
     try:
         print(f'processing {metric_name} ...', flush=True)
         metric_paths = {name: Path(path) / metric_name for name,path in paths.items() if (Path(path) / metric_name).exists()}
@@ -153,13 +153,13 @@ class Evaluation:
 
         if self.denorm:
             self.metrics = {
-                # 'power-spectrum': PowerSpectrum(1280, 2560),
-                # 'semivariogram': Semivariogram(n_samples=300),
+                #'power-spectrum': PowerSpectrum(1280, 2560),
+                #'semivariogram': Semivariogram(n_samples=300),
                 # 'moments': Moments(),
-                # 'img-SEA': vis_sea,
-                # 'img-EU': vis_eu,
-                # 'img-NA': vis_na,
-                # 'img-pacific': vis_pac,
+                #'imgs/SEA': vis_sea,
+                #'imgs/EU': vis_eu,
+                #'imgs/NA': vis_na,
+                #'imgs/pacific': vis_pac,
                 'losses/mse': TemporalMetric(_mse_loss, label='mean squared error'),
                 'losses/tv': TemporalMetric(_tv_loss, label='total variation difference'),
                 #'random_projection': rand_proj,
@@ -174,19 +174,19 @@ class Evaluation:
 
                 if i < 50:
                     projection = lambda batch, y=y,x=x: batch[:, y:y+25, x:x+25, :]
-                    self.metrics[f'projections/{machine_name}'] = Project(None, self.mean, self.std, projection)
+                    #self.metrics[f'projections/{machine_name}'] = Project(None, self.mean, self.std, projection)
                 
-                self.metrics[f'histograms_1x1/{machine_name}'] = Histogram((y,x), (1,1))
-                self.metrics[f'histograms_2x2/{machine_name}'] = Histogram((y,x), (2,2))
-                self.metrics[f'histograms_3x3/{machine_name}'] = Histogram((y,x), (3,3))
+                #self.metrics[f'histograms_1x1/{machine_name}'] = Histogram((y,x), (1,1))
+                #self.metrics[f'histograms_2x2/{machine_name}'] = Histogram((y,x), (2,2))
+                #self.metrics[f'histograms_3x3/{machine_name}'] = Histogram((y,x), (3,3))
 
 
         else:
             self.metrics = {
-                'img-SEA-transformed': vis_sea,
-                'img-EU-transformed': vis_eu,
-                'img-NA-transformed': vis_na,
-                'img-pacific-transformed': vis_pac,
+                'imgs-transform/SEA': vis_sea,
+                'imgs-transform/EU': vis_eu,
+                'imgs-transform/NA': vis_na,
+                'imgs-transform/pacific': vis_pac,
             }        
 
 
@@ -316,16 +316,20 @@ class Evaluation:
             for name, metric in self.metrics.items():
                 args =  [paths, name, metric]
                 results.append(pool.apply_async(_process_metric, args))
-                
+            
+            # wait for everything to finish
             for res in results:
                 res.wait()  # don't call get() here
+
+            # ensure that exceptions thrown during serialization/deserailization get propagated
+            for res in results:
+                res.get()
 
 
 def main():
     plt.ioff()
 
-    DIR = Path('/data/old_results/sr_results_fftreg')
-    #DIR = Path('/data/sr_results')
+    DIR = Path('/data/sr_results')
 
     groundtruth = GroundtruthIterator(DIR / 'groundtruth')
     bilinear = BilinearIterator(DIR / 'bilinear')
@@ -340,16 +344,35 @@ def main():
         checkpoint = '/data/sr_models/rnet-small-23c-20210912-161623/training/gan-18'
     )
 
+    abla_15c_gan9 = GANIterator(
+        outdir = DIR / 'abla-15c/gan-9',
+        checkpoint = '/data/sr_models/abla-15c-20211010-150809/training/gan-9'
+    )
+
+    abla_23c_gan9 = GANIterator(
+        outdir = DIR / 'abla-23c/gan-9',
+        checkpoint = '/data/sr_models/abla-23c-20211010-150650/training/gan-9'
+    )
+
+    abla_31c_gan9 = GANIterator(
+        outdir = DIR / 'abla-31c/gan-9',
+        checkpoint = '/data/sr_models/abla-31c-20211011-134752/training/gan-9'
+    )
+
     fftreg = GANIterator(
         outdir = DIR / 'rnet-small-23c-fftreg/gan-6',
         checkpoint = '/data/sr_models/rnet-small-23c-fftreg-20210924-142214/training/gan-6'
     )
 
     if False:
-        #Evaluation(groundtruth, force_overwrite=True).run(max_iters=None)
+        """
+        Evaluation(groundtruth, force_overwrite=True).run(max_iters=None)
         del groundtruth
         gc.collect()
+        """
+        
 
+        """
         #Evaluation(bilinear, force_overwrite=True).run(max_iters=4)
         
         Evaluation(mse_gan18, force_overwrite=True).run(max_iters=None)
@@ -359,21 +382,39 @@ def main():
         Evaluation(rnet_23c_gan18, force_overwrite=True).run(max_iters=None)
         del rnet_23c_gan18
         gc.collect()
+
+        Evaluation(abla_15c_gan9, force_overwrite=True).run(max_iters=None)
+        del abla_15c_gan9
+        gc.collect()
+
+        Evaluation(abla_23c_gan9, force_overwrite=True).run(max_iters=None)
+        del abla_23c_gan9
+        gc.collect()
+
+        Evaluation(abla_31c_gan9, force_overwrite=True).run(max_iters=None)
+        del abla_31c_gan9
+        gc.collect()
+        """
         
         #Evaluation(fftreg, force_overwrite=True).run(max_iters=30)
         pass
 
     if True: 
-        Evaluation(groundtruth, force_overwrite=True).summarize(DIR / 'summary', {
-            #'ground truth': '/data/sr_results/groundtruth',
+        Evaluation(groundtruth, force_overwrite=True).summarize(DIR / 'summary2', {
             'ground truth': DIR / 'groundtruth',
             'ours': DIR / 'rnet-small-23c/gan-18',
-            #'ours': '/data/sr_results/rnet-small-23c/gan-12',
-            'mse': DIR / 'mse/gan-18',
-            #'mse': '/data/sr_results/mse/gan-12',
-            #'bilinear': DIR / 'bilinear',
-            #'fftreg': '/data/old_results/sr_results_fftreg/rnet-small-23c-fftreg/gan-6'
+            'l2': DIR / 'mse/gan-18',
         })
+
+        """
+        Evaluation(groundtruth, force_overwrite=True).summarize(DIR / 'ablation-summary2', {
+            'ground truth': DIR / 'groundtruth',
+            '45h': DIR / 'abla-15c/gan-9',
+            '69h': DIR / 'abla-23c/gan-9',
+            '93h': DIR / 'abla-31c/gan-9',
+            'mse': DIR/ 'mse/gan-9'
+        })
+        """
 
 if __name__ == '__main__':
     main()

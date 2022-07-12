@@ -20,7 +20,7 @@ flags.DEFINE_bool('interpolate', False, 'interpolate images')
 def plot_scalarfield(field, name, extent=None, vmin=None, vmax=None, cmap=None):
     extent = (0 + 11.25, 360 + 11.25, 90 - 11.25, -90 + 11.25) if extent is None else extent
     
-
+    plt.figure(figsize=(6,3))
     ax = plt.axes(projection=ccrs.PlateCarree())
     ax.set_extent((-180, 179.99, 65, -65), ccrs.PlateCarree())
     ax.coastlines()
@@ -43,8 +43,8 @@ def plot_scalarfield(field, name, extent=None, vmin=None, vmax=None, cmap=None):
     lon = [-175, -175+22.5, -175+22.5, -175, -175]
     ax.plot(lon, lat, transform=ccrs.PlateCarree(), color='red')
 
-    plt.tight_layout()
-    plt.savefig(name)
+    plt.savefig(name + '.png', bbox_inches='tight')
+    plt.savefig(name + '.pdf', bbox_inches='tight')
     plt.close()
 
 
@@ -52,17 +52,17 @@ def plot_preds(preds, dir, delta_T):
     pred_labels = np.argmax(preds, axis=-1)
     entropy = -np.sum(preds * np.log(preds), axis=-1)
 
-    plot_scalarfield(np.mean(preds[..., (delta_T-1)], axis=0), dir + '/proba.png', vmin=0., vmax=1., cmap='PiYG')
-    plot_scalarfield(np.mean(preds[..., (delta_T-2)] + preds[..., (delta_T-1)] + preds[..., delta_T], axis=0), dir + '/top3_proba.png', vmin=0., vmax=1., cmap='PiYG')
+    plot_scalarfield(np.mean(preds[..., (delta_T-1)], axis=0), dir + '/proba', vmin=0., vmax=1., cmap='PiYG')
+    plot_scalarfield(np.mean(preds[..., (delta_T-2)] + preds[..., (delta_T-1)] + preds[..., delta_T], axis=0), dir + '/top3_proba', vmin=0., vmax=1., cmap='PiYG')
     
-    plot_scalarfield(np.mean(pred_labels == (delta_T-1), axis=0), dir + '/accuracy.png', vmin=0., vmax=1., cmap='PiYG')
-    plot_scalarfield(np.mean((pred_labels >= (delta_T-2)) & (pred_labels <= delta_T), axis=0), dir + '/top3_accuracy.png', vmin=0., vmax=1., cmap='PiYG')
+    plot_scalarfield(np.mean(pred_labels == (delta_T-1), axis=0), dir + '/accuracy', vmin=0., vmax=1., cmap='PiYG')
+    plot_scalarfield(np.mean((pred_labels >= (delta_T-2)) & (pred_labels <= delta_T), axis=0), dir + '/top3_accuracy', vmin=0., vmax=1., cmap='PiYG')
    
-    plot_scalarfield(np.mean(entropy, axis=0), dir + '/entropy.png')
+    plot_scalarfield(np.mean(entropy, axis=0), dir + '/entropy')
     
 
 def main(argv):
-    delta_T = 12
+    delta_T = 16
     outdir = f'uncertainty/dt{delta_T}'
 
     preds = np.load(f'uncertainty/raw_{delta_T}.npy')
@@ -77,13 +77,13 @@ def main(argv):
     i = 0
     for M, n_days in zip(months, days):
         os.makedirs(outdir + '/' + M, exist_ok=True)
-        plot_preds(preds[i:i+n_days*8], outdir + '/' + M, delta_T)
+        #plot_preds(preds[i:i+n_days*8], outdir + '/' + M, delta_T)
         i += n_days*8
 
     # Time
     for i, label in enumerate(['00', '03', '06', '09', '12', '15', '18', '21']):
         os.makedirs(outdir + f'/by_time/{label}', exist_ok=True)
-        plot_preds(preds[i::8], outdir + f'/by_time/{label}', delta_T)
+        #plot_preds(preds[i::8], outdir + f'/by_time/{label}', delta_T)
 
 
     # Warm / Cold Season

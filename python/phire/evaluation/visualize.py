@@ -10,7 +10,7 @@ def _plot_images(imgs):
     N_MODELS = len(imgs)
     N_IMGS = imgs[list(imgs)[0]].shape[0]
 
-    fig, axes = plt.subplots(N_IMGS, N_MODELS, figsize=(N_MODELS*4.02, N_IMGS*4.02 + 0.15))
+    fig, axes = plt.subplots(N_IMGS, N_MODELS, figsize=(N_MODELS*2.5, N_IMGS*2.5 + 0.1))
     for i, name in enumerate(imgs):
         for j, img in enumerate(imgs[name]):
             ax = axes[j, i] 
@@ -19,7 +19,7 @@ def _plot_images(imgs):
             if j == 0:
                 ax.set_title(name, fontsize=12) 
 
-    plt.subplots_adjust(wspace=0.01, hspace=0.01)
+    plt.subplots_adjust(wspace=0.02, hspace=0.02)
     return fig, axes
 
 
@@ -149,9 +149,9 @@ class Visualize(EvaluationMethod):
         vort_imgs = {name: imgs[:, H//2:, W//2:] for name,imgs in vort_imgs.items()}
 
         fig, axes = _plot_images(div_imgs)
-        fig.savefig(outdir / 'div_zoom.png', bbox_inches='tight', dpi=H//2)
+        fig.savefig(outdir / 'div_zoom.png', bbox_inches='tight', dpi=H*4)
         fig.savefig(outdir / 'div_zoom.pdf', bbox_inches='tight')
 
         fig, axes = _plot_images(vort_imgs)
-        fig.savefig(outdir / 'vort_zoom.png', bbox_inches='tight', dpi=H//2)
+        fig.savefig(outdir / 'vort_zoom.png', bbox_inches='tight', dpi=H*4)
         fig.savefig(outdir / 'vort_zoom.pdf', bbox_inches='tight')
