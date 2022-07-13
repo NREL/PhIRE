@@ -98,7 +98,7 @@ class Train:
         paths = glob('/data2/rplearn/rplearn_train_1979_1998.*.tfrecords')
         self.data_path_train = paths
         
-        self.data_path_eval = glob('/data/rplearn/rplearn_eval_2000_2005.*.tfrecords')
+        self.data_path_eval = glob('/data2/rplearn/rplearn_eval_2000_2005.*.tfrecords')
         self.val_freq = 3
         self.n_classes = 31
         self.is_autoencoder = True
@@ -200,7 +200,7 @@ class Train:
 
         csv_logger = CSVLogger(str(self.checkpoint_dir / 'training.csv'), keys=['lr', 'loss', 'val_loss'], append=True, separator=' ')
         saver = ModelSaver(self.checkpoint_dir)
-        lr_reducer = tf.keras.callbacks.ReduceLROnPlateau('loss', min_delta=4e-2, min_lr=1e-5, patience=8)
+        lr_reducer = tf.keras.callbacks.ReduceLROnPlateau('loss', min_delta=4e-2, min_lr=1e-5, patience=6)
         callbacks = [csv_logger, lr_reducer, saver]
 
         optimizer = tf.keras.optimizers.SGD(momentum=0.9, clipnorm=5.0)
@@ -215,14 +215,14 @@ class Train:
         
         # training
         self.resnet.model.fit(
-            self.train_ds, 
-            validation_data=self.eval_ds, 
+            self.train_ds.repeat(), 
+            validation_data=self.eval_ds.repeat(), 
             validation_freq=self.val_freq, 
             epochs=60, 
             callbacks=callbacks,
             verbose=1,
             initial_epoch=0,
-            #steps_per_epoch=200,
+            steps_per_epoch=15000,
             validation_steps=1000,
         )
 
@@ -412,7 +412,7 @@ def main():
     Train().train_autoencoder()
     #Train().train()
 
-    _#dir = '/data/final_rp_models/rnet-small-23c_2021-09-09_1831'
+    #dir = '/data/final_rp_models/rnet-small-23c_2021-09-09_1831'
     #Train().evaluate_all(_dir)
     #Train().evaluate_loss(_dir + '/epoch27', layer=196)
     #Train().evaluate_loss(_dir + '/epoch27', layer=148)
