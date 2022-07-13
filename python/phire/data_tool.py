@@ -283,23 +283,23 @@ class DataSampler:
         return np.stack(channels, axis=-1)
 
 
+rplearn_features = {
+    'index': tf.io.FixedLenFeature([], tf.int64),
+    'patch1': tf.io.FixedLenFeature([], tf.string),
+    'patch2': tf.io.FixedLenFeature([], tf.string),
+    'label': tf.io.FixedLenFeature([], tf.int64),
+    'T_max': tf.io.FixedLenFeature([], tf.int64),
+    'H': tf.io.FixedLenFeature([], tf.int64),
+    'W': tf.io.FixedLenFeature([], tf.int64),
+    'C': tf.io.FixedLenFeature([], tf.int64),
+    'lat_start': tf.io.FixedLenFeature([], tf.float32),
+    'long_start': tf.io.FixedLenFeature([], tf.float32),
+    'lat_end': tf.io.FixedLenFeature([], tf.float32),
+    'long_end': tf.io.FixedLenFeature([], tf.float32)
+}
+
 def parse_samples(serialized):
-    feature = {
-        'index': tf.io.FixedLenFeature([], tf.int64),
-        'patch1': tf.io.FixedLenFeature([], tf.string),
-        'patch2': tf.io.FixedLenFeature([], tf.string),
-        'label': tf.io.FixedLenFeature([], tf.int64),
-        'T_max': tf.io.FixedLenFeature([], tf.int64),
-        'H': tf.io.FixedLenFeature([], tf.int64),
-        'W': tf.io.FixedLenFeature([], tf.int64),
-        'C': tf.io.FixedLenFeature([], tf.int64),
-        'lat_start': tf.io.FixedLenFeature([], tf.float32),
-        'long_start': tf.io.FixedLenFeature([], tf.float32),
-        'lat_end': tf.io.FixedLenFeature([], tf.float32),
-        'long_end': tf.io.FixedLenFeature([], tf.float32)
-    }
-    
-    examples = tf.io.parse_example(serialized, feature)
+    examples = tf.io.parse_example(serialized, rplearn_features)
     return examples
 
 

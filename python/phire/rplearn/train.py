@@ -16,80 +16,14 @@ import sklearn.metrics
 from .skeleton import load_model, load_encoder
 from .resnet import Resnet101, ResnetSmall, Resnet18
 from .autoencoder import AutoencoderSmall
-from ..data_tool import parse_samples
 from .callbacks import CSVLogger, ModelSaver
+from .data import make_autoencoder_ds, make_atmodist_ds
 
 
 def plot_confusion(mdir, y_true, y_pred):
     # confusion matrix
     cm = sklearn.metrics.confusion_matrix(np.argmax(y_true, axis=1), np.argmax(y_pred, axis=1))
     np.savetxt(mdir + '/confusion_matrix.csv', cm)
-    
-   
-
-
-def parse_train(serialized, append_latlon=False, tmax=None, autoencoder=False):
-    examples = parse_samples(serialized)
-
-    N = tf.cast(tf.shape(examples['H'])[0], tf.int64)
-    H,W,C = examples['H'][0], examples['W'][0], examples['C'][0]
-    T_max = tmax or examples['T_max'][0]
-
-    patch1 = tf.io.decode_raw(examples['patch1'], tf.float32)
-    patch1 = tf.reshape(patch1, (-1, H,W,C))
-    patch2 = tf.io.decode_raw(examples['patch2'], tf.float32)
-    patch2 = tf.reshape(patch2, (-1, H,W,C))
-
-    labels = tf.one_hot(examples['label'] - 1, tf.cast(T_max, tf.int32))
-
-    if append_latlon:
-        lat_cos = tf.math.cos(2*np.pi * tf.linspace(examples['lat_start'], examples['lat_end'], H) / 180)
-        lat_sin = tf.math.sin(2*np.pi * tf.linspace(examples['lat_start'], examples['lat_end'], H) / 180)
-
-        lon_cos = tf.math.cos(2*np.pi * tf.linspace(examples['long_start'], examples['long_end'], W) / 360)
-        lon_sin = tf.math.sin(2*np.pi * tf.linspace(examples['long_start'], examples['long_end'], W) / 360)
-
-        lat_cos = tf.tile(tf.transpose(lat_cos[:,:,None,None], [1,0,2,3]), [1, 1, W, 1])
-        lat_sin = tf.tile(tf.transpose(lat_sin[:,:,None,None], [1,0,2,3]), [1, 1, W, 1])
-
-        lon_cos = tf.tile(tf.transpose(lon_cos[:,:,None,None], [1,2,0,3]), (1, H, 1, 1))
-        lon_sin = tf.tile(tf.transpose(lon_sin[:,:,None,None], [1,2,0,3]), (1, H, 1, 1))
-
-        patch1 = tf.concat([patch1, lat_cos, lat_sin, lon_cos, lon_sin], axis=-1)
-        patch2 = tf.concat([patch2, lat_cos, lat_sin, lon_cos, lon_sin], axis=-1)
-
-    if autoencoder:
-        both = tf.concat([patch1, patch2], axis=0)
-        X = {'img1': both}
-        y = both
-    else:
-        X = {'img1': patch1, 'img2': patch2}
-        y = labels
-
-    return X, y
-
-
-def make_train_ds(files, batch_size, n_shuffle=1000, compression_type='ZLIB', append_latlon=False, tmax=None, autoencoder=False):
-    assert files
-
-    ds = tf.data.TFRecordDataset(files, num_parallel_reads=4 if n_shuffle else None, compression_type=compression_type)
-    
-    if n_shuffle:
-        ds = ds.shuffle(n_shuffle)
-
-    ds = ds.batch(1)
-    ds = ds.map(lambda x: parse_train(x, append_latlon, tmax, autoencoder))
-    ds = ds.unbatch()
-    
-    if not autoencoder:
-        ds = ds.filter(lambda X, y: tf.math.reduce_sum(y) == 1)
-    
-    ds = ds.batch(batch_size)
-    
-    # not required anymore
-    #ds = ds.map(lambda X,y,w: (tf.nest.map_structure(remap, X), y, w))
-
-    return ds.prefetch(None)
 
 
 class Train:
@@ -133,7 +67,10 @@ class Train:
 
 
     def setup_ds(self, tmax, batch_size=128):
-        train_ds = make_train_ds(self.data_path_train, batch_size, n_shuffle=2000, tmax=tmax, autoencoder=self.is_autoencoder)
+        if self.is_autoencoder:
+            train_ds = make_autoencoder_ds(self.data_path_train, batch_size, n_shuffle=2000)
+        else:
+            train_ds = make_atmodist_ds(self.data_path_train, batch_size, n_shuffle=2000, T_max=tmax)
         
         self.small_train_ds = train_ds.take(2000)  # order is shuffled but these are always the same 2000 batches 
         
@@ -143,7 +80,10 @@ class Train:
             # ablation study
             self.train_ds = train_ds.take(9340)
 
-        self.eval_ds = make_train_ds(self.data_path_eval, batch_size, n_shuffle=1, tmax=tmax, autoencoder=self.is_autoencoder)
+        if self.is_autoencoder:
+            self.eval_ds = make_autoencoder_ds(self.data_path_eval, batch_size, n_shuffle=1)
+        else:
+            self.eval_ds = make_atmodist_ds(self.data_path_eval, batch_size, n_shuffle=1, T_max=tmax)
 
 
     def train(self):
@@ -203,7 +143,7 @@ class Train:
         lr_reducer = tf.keras.callbacks.ReduceLROnPlateau('loss', min_delta=4e-2, min_lr=1e-5, patience=6)
         callbacks = [csv_logger, lr_reducer, saver]
 
-        optimizer = tf.keras.optimizers.SGD(momentum=0.9, clipnorm=5.0)
+        optimizer = tf.keras.optimizers.SGD(momentum=0.9, clipnorm=5.0, nesterov=True)
 
         self.resnet.model.compile(
             optimizer=optimizer,
@@ -211,7 +151,7 @@ class Train:
             metrics=metrics
         )    
 
-        self.resnet.model.optimizer.learning_rate.assign(1e-2)
+        self.resnet.model.optimizer.learning_rate.assign(1e-1)
         
         # training
         self.resnet.model.fit(

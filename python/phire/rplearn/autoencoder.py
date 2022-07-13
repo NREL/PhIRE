@@ -67,12 +67,12 @@ class AutoencoderSmall(EncoderDecoderModel, ResnetBase):
         self.encoder, skipcons = self.build_encoder()
         self.decoder = self.build_decoder(skipcons)
 
-        img = tf.keras.Input(shape=self.shape, name='img1')
+        img = tf.keras.Input(shape=self.shape, name='img')
         x = self.encoder(img)
         x = self.decoder(x)
 
         return tf.keras.Model(
-            inputs={'img1': img},
+            inputs=img,
             outputs=x,
             name=self.name
         )
