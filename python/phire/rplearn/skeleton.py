@@ -46,10 +46,31 @@ class CommonLayers:
         return tf.keras.layers.Activation(self.activation, name=name)(x)
 
 
+    def dense_bn_act(self, x, filters, name, **kwargs):
+        x = self.dense(x, filters, name + '_dense', **kwargs)
+        x = self.bn(x, name+'_bn')
+        x = self.act(x, name+'_act')
+        return x
+
+
     def conv_bn_act(self, x, filters, kernel, name, **kwargs):
         x = self.conv(x, filters, kernel, name + '_conv', **kwargs)
         x = self.bn(x, name+'_bn')
         x = self.act(x, name+'_act')
+        return x
+
+
+    def spatial_flatten(self, x, shape):
+        H,W,C = shape        
+        x = tf.reshape(x, [-1, H*W, C])
+        x = tf.transpose(x, [0,2,1])
+        return x
+
+
+    def spatial_deflate(self, x, shape):
+        H,W,C = shape
+        x = tf.transpose(x, [0,2,1])
+        x = tf.reshape(x, [-1, H, W, C])
         return x
 
 

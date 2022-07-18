@@ -42,7 +42,12 @@ class AutoencoderSmall(EncoderDecoderModel, ResnetBase):
         H,W,C = self.shape[0] // 2**5, self.shape[1] // 2**5, 128
         inp = tf.keras.Input(shape=(H,W,C), name='inp')
     
-        x = self.resblock_up(inp, 64, f'block4_upconv', upscale=True)
+        x = self.spatial_flatten(inp, [H,W,C])
+        x = self.dense_bn_act(x, H*W, 'spatial_mixing')
+        x = self.spatial_deflate(x, [H,W,C])
+        x = self.conv_bn_act(x, C, 1, 'channel_mixing')
+
+        x = self.resblock_up(x, 64, f'block4_upconv', upscale=True)
 
         x = self.decoder_up_block(x, 64, skipcons[-2], 'block3')
         x = self.decoder_up_block(x, 32, skipcons[-3], 'block2')
