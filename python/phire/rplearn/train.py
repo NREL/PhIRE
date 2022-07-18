@@ -17,7 +17,8 @@ from .skeleton import load_model, load_encoder
 from .resnet import Resnet101, ResnetSmall, Resnet18
 from .autoencoder import AutoencoderSmall
 from .callbacks import CSVLogger, ModelSaver
-from .data import make_autoencoder_ds, make_atmodist_ds
+from .data import make_autoencoder_ds, make_atmodist_ds, make_inpaint_ds
+from .losses import MaskedL2
 
 
 def plot_confusion(mdir, y_true, y_pred):
@@ -26,27 +27,13 @@ def plot_confusion(mdir, y_true, y_pred):
     np.savetxt(mdir + '/confusion_matrix.csv', cm)
 
 
-class Train:
+class BaseTrain:
 
-    def __init__(self):
-        paths = glob('/data2/rplearn/rplearn_train_1979_1998.*.tfrecords')
-        self.data_path_train = paths
-        
-        self.data_path_eval = glob('/data2/rplearn/rplearn_eval_2000_2005.*.tfrecords')
-        self.val_freq = 3
-        self.n_classes = 31
-        self.is_autoencoder = True
-
-        #self.resnet = ResnetSmall(shape=(160,160,2), n_classes=self.n_classes, output_logits=False, shortcut='projection')
-        #resnet = Resnet18((160,160,2), 16, output_logits=False, shortcut='projection')
-        #resnet = Resnet101((160,160,2), 16, output_logits=False)
-        self.resnet = AutoencoderSmall(shape=(160,160,2), shortcut='projection')
+    def __init__(self, train_files, eval_files):
+        self.data_path_train = train_files
+        self.data_path_eval = eval_files
 
         self.model_dir = Path('/data/final_rp_models')
-        self.prefix = 'autoencoder'
-        self.description = '''
-        Auotencoder
-        '''
 
         self.start_time = datetime.today()
         self.checkpoint_dir = self.model_dir / '{}_{}'.format(self.prefix, self.start_time.strftime('%Y-%m-%d_%H%M'))
@@ -63,108 +50,7 @@ class Train:
 
         self.resnet.summary()
         with open(self.checkpoint_dir / 'model_summary.txt', 'w') as f:
-            self.resnet.summary(f)
-
-
-    def setup_ds(self, tmax, batch_size=128):
-        if self.is_autoencoder:
-            train_ds = make_autoencoder_ds(self.data_path_train, batch_size, n_shuffle=2000)
-        else:
-            train_ds = make_atmodist_ds(self.data_path_train, batch_size, n_shuffle=2000, T_max=tmax)
-        
-        self.small_train_ds = train_ds.take(2000)  # order is shuffled but these are always the same 2000 batches 
-        
-        if True:
-            self.train_ds = train_ds 
-        else:
-            # ablation study
-            self.train_ds = train_ds.take(9340)
-
-        if self.is_autoencoder:
-            self.eval_ds = make_autoencoder_ds(self.data_path_eval, batch_size, n_shuffle=1)
-        else:
-            self.eval_ds = make_atmodist_ds(self.data_path_eval, batch_size, n_shuffle=1, T_max=tmax)
-
-
-    def train(self):
-        self.setup_dir()
-        self.setup_ds(tmax=self.n_classes)
-
-        loss = tf.keras.losses.CategoricalCrossentropy(from_logits=False),
-        metrics = 'categorical_accuracy'
-
-        csv_logger = CSVLogger(str(self.checkpoint_dir / 'training.csv'), keys=['lr', 'loss', 'categorical_accuracy', 'val_loss', 'val_categorical_accuracy'], append=True, separator=' ')
-        saver = ModelSaver(self.checkpoint_dir)
-        lr_reducer = tf.keras.callbacks.ReduceLROnPlateau('loss', min_delta=4e-2, min_lr=1e-5, patience=8)
-        callbacks = [csv_logger]
-
-        optimizer = tf.keras.optimizers.SGD(momentum=0.9, clipnorm=5.0)
-
-        self.resnet.model.compile(
-            optimizer=optimizer,
-            loss=loss,
-            metrics=metrics
-        )    
-
-        self.resnet.model.optimizer.learning_rate.assign(1e-1)
-        
-        # pretraining
-        self.resnet.model.fit(
-            self.small_train_ds, 
-            validation_data=self.eval_ds, 
-            validation_freq=self.val_freq, 
-            epochs=20, 
-            callbacks=callbacks,
-            verbose=1,
-            initial_epoch=0
-        )
-        
-        # training
-        callbacks += [lr_reducer, saver]  # only activate now
-        self.resnet.model.fit(
-            self.train_ds, 
-            validation_data=self.eval_ds, 
-            validation_freq=self.val_freq, 
-            epochs=60, 
-            callbacks=callbacks,
-            verbose=2,
-            initial_epoch=0
-        )
-
-    def train_autoencoder(self):
-        self.setup_dir()
-        self.setup_ds(tmax=0)
-
-        loss = tf.keras.losses.MeanSquaredError(),
-        metrics = []
-
-        csv_logger = CSVLogger(str(self.checkpoint_dir / 'training.csv'), keys=['lr', 'loss', 'val_loss'], append=True, separator=' ')
-        saver = ModelSaver(self.checkpoint_dir)
-        lr_reducer = tf.keras.callbacks.ReduceLROnPlateau('loss', min_delta=4e-2, min_lr=1e-5, patience=6)
-        callbacks = [csv_logger, lr_reducer, saver]
-
-        optimizer = tf.keras.optimizers.SGD(momentum=0.9, clipnorm=5.0, nesterov=True)
-
-        self.resnet.model.compile(
-            optimizer=optimizer,
-            loss=loss,
-            metrics=metrics
-        )    
-
-        self.resnet.model.optimizer.learning_rate.assign(1e-1)
-        
-        # training
-        self.resnet.model.fit(
-            self.train_ds.repeat(), 
-            validation_data=self.eval_ds.repeat(), 
-            validation_freq=self.val_freq, 
-            epochs=60, 
-            callbacks=callbacks,
-            verbose=1,
-            initial_epoch=0,
-            steps_per_epoch=15000,
-            validation_steps=1000,
-        )
+            self.resnet.summary(f)    
 
     
     def evaluate_single(self, dir, on_train=False):
@@ -348,9 +234,192 @@ class Train:
         with open(dir + f'/layer{layer}_scale.txt', 'w') as f:
             f.write(str(alpha))
 
+
+class Atmodist(BaseTrain):
+    
+    def __init__(self, *args, **kwargs):
+        self.prefix = 'rplearn'
+        self.description = '''
+        Atmodist
+        '''
+
+        self.val_freq = 3
+        self.n_classes = 31
+        self.resnet = ResnetSmall(shape=(160,160,2), n_classes=self.n_classes, output_logits=False, shortcut='projection')
+        
+        super().__init__(*args, **kwargs)
+       
+
+    def train(self):
+        self.setup_dir()
+        self.setup_ds(tmax=self.n_classes)
+
+        loss = tf.keras.losses.CategoricalCrossentropy(from_logits=False),
+        metrics = 'categorical_accuracy'
+
+        csv_logger = CSVLogger(str(self.checkpoint_dir / 'training.csv'), keys=['lr', 'loss', 'categorical_accuracy', 'val_loss', 'val_categorical_accuracy'], append=True, separator=' ')
+        saver = ModelSaver(self.checkpoint_dir)
+        lr_reducer = tf.keras.callbacks.ReduceLROnPlateau('loss', min_delta=4e-2, min_lr=1e-5, patience=8)
+        callbacks = [csv_logger]
+
+        optimizer = tf.keras.optimizers.SGD(momentum=0.9, clipnorm=5.0)
+
+        self.resnet.model.compile(
+            optimizer=optimizer,
+            loss=loss,
+            metrics=metrics
+        )    
+
+        self.resnet.model.optimizer.learning_rate.assign(1e-1)
+        
+        # pretraining
+        self.resnet.model.fit(
+            self.small_train_ds, 
+            validation_data=self.eval_ds, 
+            validation_freq=self.val_freq, 
+            epochs=20, 
+            callbacks=callbacks,
+            verbose=1,
+            initial_epoch=0
+        )
+        
+        # training
+        callbacks += [lr_reducer, saver]  # only activate now
+        self.resnet.model.fit(
+            self.train_ds, 
+            validation_data=self.eval_ds, 
+            validation_freq=self.val_freq, 
+            epochs=60, 
+            callbacks=callbacks,
+            verbose=2,
+            initial_epoch=0
+        )
+
+
+    def setup_ds(self, batch_size=128, tmax=None, **kwargs):
+        train_ds = make_atmodist_ds(self.data_path_train, batch_size, n_shuffle=2000, T_max=tmax)
+        
+        self.small_train_ds = train_ds.take(2000)  # order is shuffled but these are always the same 2000 batches 
+        
+        if True:
+            self.train_ds = train_ds 
+        else:
+            # ablation study
+            self.train_ds = train_ds.take(9340)
+
+        self.eval_ds = make_atmodist_ds(self.data_path_eval, batch_size, n_shuffle=1, T_max=tmax)
+
+
+class Autoencoder(BaseTrain):
+
+    def __init__(self, *args, **kwargs):
+        self.prefix = 'autoencoder'
+        self.description = '''
+        Autoencoder
+        '''
+        self.resnet = AutoencoderSmall(shape=(160,160,2), shortcut='projection')
+        
+        super().__init__(*args, **kwargs)
+
+
+    def train(self):
+        self.setup_dir()
+        self.setup_ds(tmax=0)
+
+        loss = tf.keras.losses.MeanSquaredError(),
+        metrics = []
+
+        csv_logger = CSVLogger(str(self.checkpoint_dir / 'training.csv'), keys=['lr', 'loss', 'val_loss'], append=True, separator=' ')
+        saver = ModelSaver(self.checkpoint_dir)
+        lr_reducer = tf.keras.callbacks.ReduceLROnPlateau('loss', min_delta=4e-2, min_lr=1e-5, patience=6)
+        callbacks = [csv_logger, lr_reducer, saver]
+
+        optimizer = tf.keras.optimizers.SGD(momentum=0.9, clipnorm=5.0, nesterov=True)
+
+        self.resnet.model.compile(
+            optimizer=optimizer,
+            loss=loss,
+            metrics=metrics
+        )    
+
+        self.resnet.model.optimizer.learning_rate.assign(1e-1)
+        
+        # training
+        self.resnet.model.fit(
+            self.train_ds.repeat(), 
+            validation_data=self.eval_ds.repeat(), 
+            validation_freq=self.val_freq, 
+            epochs=60, 
+            callbacks=callbacks,
+            verbose=1,
+            initial_epoch=0,
+            steps_per_epoch=15000,
+            validation_steps=1000,
+        )
+
+    def setup_ds(self, batch_size=128, **kwargs):
+        self.train_ds = make_autoencoder_ds(self.data_path_train, batch_size, n_shuffle=2000)
+        self.eval_ds = make_autoencoder_ds(self.data_path_eval, batch_size, n_shuffle=1)
+
+
+class Inpaint(BaseTrain):
+
+    def __init__(self, *args, **kwargs):
+        self.prefix = 'inpaint'
+        self.description = '''
+        Inpainting
+        '''
+        self.resnet = AutoencoderSmall(shape=(160,160,2), shortcut='projection')
+        
+        super().__init__(*args, **kwargs)
+
+
+    def train(self):
+        self.setup_dir()
+        self.setup_ds(tmax=0)
+
+        loss = MaskedL2(),
+        metrics = []
+
+        csv_logger = CSVLogger(str(self.checkpoint_dir / 'training.csv'), keys=['lr', 'loss', 'val_loss'], append=True, separator=' ')
+        saver = ModelSaver(self.checkpoint_dir)
+        lr_reducer = tf.keras.callbacks.ReduceLROnPlateau('loss', min_delta=4e-2, min_lr=1e-5, patience=6)
+        callbacks = [csv_logger, lr_reducer, saver]
+
+        optimizer = tf.keras.optimizers.SGD(momentum=0.9, clipnorm=5.0, nesterov=True)
+
+        self.resnet.model.compile(
+            optimizer=optimizer,
+            loss=loss,
+            metrics=metrics
+        )    
+
+        self.resnet.model.optimizer.learning_rate.assign(1e-1)
+        
+        # training
+        self.resnet.model.fit(
+            self.train_ds.repeat(), 
+            validation_data=self.eval_ds.repeat(), 
+            validation_freq=self.val_freq, 
+            epochs=60, 
+            callbacks=callbacks,
+            verbose=1,
+            initial_epoch=0,
+            steps_per_epoch=15000,
+            validation_steps=1000,
+        )
+
+    def setup_ds(self, batch_size=128, **kwargs):
+        self.train_ds = make_inpaint_ds(self.data_path_train, batch_size, n_shuffle=2000)
+        self.eval_ds = make_inpaint_ds(self.data_path_eval, batch_size, n_shuffle=1)
+
+
+
 def main():
-    Train().train_autoencoder()
-    #Train().train()
+    train_paths = glob('/data2/rplearn/rplearn_train_1979_1998.*.tfrecords')
+    eval_paths = glob('/data2/rplearn/rplearn_eval_2000_2005.*.tfrecords')
+
+    Autoencoder(train_paths, eval_paths).train()
 
     #dir = '/data/final_rp_models/rnet-small-23c_2021-09-09_1831'
     #Train().evaluate_all(_dir)
