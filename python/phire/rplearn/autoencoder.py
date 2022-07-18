@@ -49,7 +49,7 @@ class AutoencoderSmall(EncoderDecoderModel, ResnetBase):
         x = self.decoder_up_block(x, 16, skipcons[-4], 'block1')
 
         x = self.resblock_up(x, 16, f'inp_up', upscale=True)
-        x = self.resblock_up(x, 2, f'out_conv')
+        x = self.conv(x, 2, 8, f'out_conv', kernel_initializer='glorot_normal')
         
         decoder = tf.keras.Model(inputs=inp, outputs=x, name='decoder')
 
