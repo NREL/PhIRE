@@ -18,7 +18,7 @@ from .resnet import Resnet101, ResnetSmall, Resnet18
 from .autoencoder import AutoencoderSmall
 from .callbacks import CSVLogger, ModelSaver
 from .data import make_autoencoder_ds, make_atmodist_ds, make_inpaint_ds
-from .losses import MaskedL2
+from .losses import MaskedLoss
 
 
 def plot_confusion(mdir, y_true, y_pred):
@@ -29,17 +29,19 @@ def plot_confusion(mdir, y_true, y_pred):
 
 class BaseTrain:
 
-    def __init__(self, train_files, eval_files):
+    def __init__(self, train_files, eval_files, model_dir):
         self.data_path_train = train_files
         self.data_path_eval = eval_files
 
-        self.model_dir = Path('/data/final_rp_models')
+        self.model_dir = Path(model_dir)
 
         self.start_time = datetime.today()
         self.checkpoint_dir = self.model_dir / '{}_{}'.format(self.prefix, self.start_time.strftime('%Y-%m-%d_%H%M'))
 
         self.train_ds = None
         self.eval_ds = None
+
+        self.val_freq = 3
 
 
     def setup_dir(self):
@@ -243,9 +245,9 @@ class Atmodist(BaseTrain):
         Atmodist
         '''
 
-        self.val_freq = 3
         self.n_classes = 31
-        self.resnet = ResnetSmall(shape=(160,160,2), n_classes=self.n_classes, output_logits=False, shortcut='projection')
+        regularizer = tf.keras.regularizers.L2(1e-4)
+        self.resnet = ResnetSmall(shape=(160,160,2), n_classes=self.n_classes, output_logits=False, shortcut='projection', regularizer=regularizer)
         
         super().__init__(*args, **kwargs)
        
@@ -317,7 +319,9 @@ class Autoencoder(BaseTrain):
         self.description = '''
         Autoencoder
         '''
-        self.resnet = AutoencoderSmall(shape=(160,160,2), shortcut='projection')
+
+        regularizer = tf.keras.regularizers.L2(1e-3)
+        self.resnet = AutoencoderSmall(shape=(160,160,2), shortcut='projection', regularizer=regularizer)
         
         super().__init__(*args, **kwargs)
 
@@ -349,7 +353,7 @@ class Autoencoder(BaseTrain):
             self.train_ds.repeat(), 
             validation_data=self.eval_ds.repeat(), 
             validation_freq=self.val_freq, 
-            epochs=60, 
+            epochs=40, 
             callbacks=callbacks,
             verbose=1,
             initial_epoch=0,
@@ -369,7 +373,9 @@ class Inpaint(BaseTrain):
         self.description = '''
         Inpainting
         '''
-        self.resnet = AutoencoderSmall(shape=(160,160,2), shortcut='projection')
+
+        regularizer = tf.keras.regularizers.L2(1e-3)
+        self.resnet = AutoencoderSmall(shape=(160,160,2), shortcut='projection', regularizer=regularizer)
         
         super().__init__(*args, **kwargs)
 
@@ -378,7 +384,7 @@ class Inpaint(BaseTrain):
         self.setup_dir()
         self.setup_ds(tmax=0)
 
-        loss = MaskedL2(),
+        loss = MaskedLoss(tf.keras.losses.MeanSquaredError()),
         metrics = []
 
         csv_logger = CSVLogger(str(self.checkpoint_dir / 'training.csv'), keys=['lr', 'loss', 'val_loss'], append=True, separator=' ')
@@ -401,7 +407,7 @@ class Inpaint(BaseTrain):
             self.train_ds.repeat(), 
             validation_data=self.eval_ds.repeat(), 
             validation_freq=self.val_freq, 
-            epochs=60, 
+            epochs=40, 
             callbacks=callbacks,
             verbose=1,
             initial_epoch=0,
@@ -416,10 +422,12 @@ class Inpaint(BaseTrain):
 
 
 def main():
-    train_paths = glob('/data2/rplearn/rplearn_train_1979_1998.*.tfrecords')
-    eval_paths = glob('/data2/rplearn/rplearn_eval_2000_2005.*.tfrecords')
+    train_paths = glob('/data/rplearn/rplearn_train_1979_1998.*.tfrecords')
+    eval_paths = glob('/data/rplearn/rplearn_eval_2000_2005.*.tfrecords')
+    model_dir = '/data/final_rp_models'
 
-    Autoencoder(train_paths, eval_paths).train()
+    args = [train_paths, eval_paths, model_dir]
+    Inpaint(*args).train()
 
     #dir = '/data/final_rp_models/rnet-small-23c_2021-09-09_1831'
     #Train().evaluate_all(_dir)

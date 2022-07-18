@@ -1,10 +1,13 @@
 import tensorflow as tf
-from tensorflow.keras.losses import MeanSquaredError
 
-class MaskedL2(MeanSquaredError):
+class MaskedLoss(tf.keras.losses.Loss):
+
+        def __init__(self, loss, **kwargs):
+            self.loss = loss
+            super().__init__(**kwargs)
 
         def call(self, y_true, y_pred):
-            s = tf.shape(X)
+            s = tf.shape(y_true)
             H,W = s[1], s[2]
 
             H_l = H//4 - 1
@@ -14,4 +17,4 @@ class MaskedL2(MeanSquaredError):
 
             y_true = y_true[:, H_l:H_r, W_l:W_r, :]
             y_pred = y_pred[:, H_l:H_r, W_l:W_r, :]
-            return super().call(y_true, y_pred)
+            return self.loss(y_true, y_pred)

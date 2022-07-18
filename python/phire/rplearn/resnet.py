@@ -9,9 +9,6 @@ class ResnetBase(CommonLayers):
         assert shortcut == 'padded' or shortcut == 'projection'
         self.shortcut_type = shortcut
 
-        if 'regularizer' not in kwargs:
-            kwargs['regularizer'] = tf.keras.regularizers.l2(1e-4)
-
         super().__init__(**kwargs)
 
 
