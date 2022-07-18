@@ -58,10 +58,10 @@ def parse_autoencoder_sample(serialized):
 
 
 def parse_inpaint_sample(serialized):
-    patch1, patch2, labels = parse_rplearn(serialized)
-    imgs = tf.concat([patch1, patch2], axis=0)
+    X,y = parse_autoencoder_sample(serialized)
 
-    N,H,W,C = tf.shape(imgs)[0], tf.shape(imgs)[1], tf.shape(imgs)[2], tf.shape(imgs)[3]
+    s = tf.shape(X)
+    N,H,W,C = s[0], s[1], s[2], s[3]
 
     H_l = H//4 - 1
     H_r = 3 * (H//4) - 1
@@ -73,12 +73,9 @@ def parse_inpaint_sample(serialized):
     W_indices = (indices // C) % W
     H_indices = (indices // (W*C)) % H
     mask = (H_indices >= H_l) & (H_indices < H_r) & (W_indices >= W_l) & (W_indices < W_r)
-    X = tf.reshape(imgs, [-1])
+    X = tf.reshape(X, [-1])
     X = tf.where(mask, tf.zeros([N*H*W*C]), X)
     X = tf.reshape(X, [N,H,W,C])
-
-    # extract area
-    y = imgs[:, H_l:H_r, W_l:W_r, :]
 
     return X, y
 
