@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import random
 import pandas as pd
 import sklearn.metrics
+from tqdm import tqdm
 
 from .skeleton import load_model, load_encoder
 from .resnet import Resnet101, ResnetSmall, Resnet18
@@ -150,11 +151,13 @@ class BaseTrain:
         #loss = loss_func(r1, r2)
         model = tf.keras.Model(inputs={'img1': img1, 'img2': img2}, outputs=[r1,r2])
 
-        self.setup_ds(tmax=None)
-        ds = self.train_ds if on_train else self.eval_ds
+        if on_train:
+            ds = make_atmodist_ds(self.data_path_train, 256, n_shuffle=1)
+        else:
+            ds = make_atmodist_ds(self.data_path_eval, 256, n_shuffle=1)
 
         samples = {}
-        for X,y,weight in ds.take(1000):
+        for X,y in tqdm(ds.take(1000), total=1000):
             r1,r2 = model(X, training=False)
             losses = loss_func(r1, r2)
             labels = np.argmax(y, axis=1)
@@ -246,7 +249,7 @@ class Atmodist(BaseTrain):
         '''
 
         self.n_classes = 31
-        regularizer = tf.keras.regularizers.L2(1e-4)
+        regularizer = tf.keras.regularizers.l2(1e-4)
         self.resnet = ResnetSmall(shape=(160,160,2), n_classes=self.n_classes, output_logits=False, shortcut='projection', regularizer=regularizer)
         
         super().__init__(*args, **kwargs)
@@ -320,7 +323,7 @@ class Autoencoder(BaseTrain):
         Autoencoder
         '''
 
-        regularizer = tf.keras.regularizers.L2(1e-3)
+        regularizer = tf.keras.regularizers.l2(1e-4)
         self.resnet = AutoencoderSmall(shape=(160,160,2), shortcut='projection', regularizer=regularizer)
         
         super().__init__(*args, **kwargs)
@@ -374,7 +377,7 @@ class Inpaint(BaseTrain):
         Inpainting
         '''
 
-        regularizer = tf.keras.regularizers.L2(1e-3)
+        regularizer = tf.keras.regularizers.l2(1e-3)
         self.resnet = AutoencoderSmall(shape=(160,160,2), shortcut='projection', regularizer=regularizer)
         
         super().__init__(*args, **kwargs)
@@ -422,12 +425,19 @@ class Inpaint(BaseTrain):
 
 
 def main():
-    train_paths = glob('/data/rplearn/rplearn_train_1979_1998.*.tfrecords')
-    eval_paths = glob('/data/rplearn/rplearn_eval_2000_2005.*.tfrecords')
+    #tf.enable_eager_execution()
+
+    train_paths = glob('/data2/rplearn/rplearn_train_1979_1998.*.tfrecords')
+    eval_paths = glob('/data2/rplearn/rplearn_eval_2000_2005.*.tfrecords')
     model_dir = '/data/final_rp_models'
 
     args = [train_paths, eval_paths, model_dir]
-    Inpaint(*args).train()
+    #Inpaint(*args).train()
+    #Autoencoder(*args).train()
+    
+    _dir = model_dir + '/autoencoder_2022-07-19_1049'
+    Autoencoder(*args).evaluate_loss(_dir + '/epoch39', layer=196)
+
 
     #dir = '/data/final_rp_models/rnet-small-23c_2021-09-09_1831'
     #Train().evaluate_all(_dir)
