@@ -14,12 +14,12 @@ import pandas as pd
 import sklearn.metrics
 from tqdm import tqdm
 
-from .skeleton import load_model, load_encoder
+from .serialization import load_model, load_encoder
 from .resnet import Resnet101, ResnetSmall, Resnet18
 from .autoencoder import AutoencoderSmall
 from .callbacks import CSVLogger, ModelSaver
 from .data import make_autoencoder_ds, make_atmodist_ds, make_inpaint_ds
-from .losses import MaskedLoss
+from .losses import MaskedLoss, ContentLoss
 
 
 def plot_confusion(mdir, y_true, y_pred):
@@ -129,10 +129,7 @@ class BaseTrain:
 
     def calc_loss(self, dir, on_train, loss_func, layer=-1):
         if dir:
-            encoder = load_encoder(dir)
-            inp = encoder.input
-            out = encoder.layers[layer].output
-            encoder = tf.keras.Model(inputs=inp, outputs=out)
+            encoder = load_encoder(dir, layer)
         else:
             def denorm(x):
                 y = x * [1.5794525e-1, 1.6044095e-1] + [8.821452e-4, 3.2483143e-4]
@@ -176,7 +173,7 @@ class BaseTrain:
 
     def evaluate_loss(self, dir, layer, on_train=True):
         if layer < 0:
-            encoder = load_encoder(dir)
+            encoder = load_encoder(dir, layer)
             layer = len(encoder.layers) + layer
 
         def l1(r1, r2):
@@ -383,11 +380,10 @@ class Inpaint(BaseTrain):
         super().__init__(*args, **kwargs)
 
 
-    def train(self):
+    def _train(self, model, loss):
         self.setup_dir()
         self.setup_ds(tmax=0)
 
-        loss = MaskedLoss(tf.keras.losses.MeanSquaredError()),
         metrics = []
 
         csv_logger = CSVLogger(str(self.checkpoint_dir / 'training.csv'), keys=['lr', 'loss', 'val_loss'], append=True, separator=' ')
@@ -397,16 +393,16 @@ class Inpaint(BaseTrain):
 
         optimizer = tf.keras.optimizers.SGD(momentum=0.9, clipnorm=5.0, nesterov=True)
 
-        self.resnet.model.compile(
+        model.compile(
             optimizer=optimizer,
             loss=loss,
             metrics=metrics
-        )    
+        )
 
-        self.resnet.model.optimizer.learning_rate.assign(1e-1)
-        
+        model.optimizer.learning_rate.assign(1e-1)
+
         # training
-        self.resnet.model.fit(
+        model.fit(
             self.train_ds.repeat(), 
             validation_data=self.eval_ds.repeat(), 
             validation_freq=self.val_freq, 
@@ -417,6 +413,20 @@ class Inpaint(BaseTrain):
             steps_per_epoch=15000,
             validation_steps=1000,
         )
+
+    def train(self):
+        loss = MaskedLoss(tf.keras.losses.MeanSquaredError())
+        return self._train(self.resnet.model, loss)
+
+
+    def train_content(self, path, layer):
+        path = Path(path)
+        encoder = load_encoder(path, layer, (80,80,2))
+        scale = float((path / f'layer{layer}_scale.txt').read_text())
+        loss = MaskedLoss(ContentLoss(encoder, scale))
+        
+        return self._train(self.resnet.model, loss)
+
 
     def setup_ds(self, batch_size=128, **kwargs):
         self.train_ds = make_inpaint_ds(self.data_path_train, batch_size, n_shuffle=2000)
@@ -433,10 +443,12 @@ def main():
 
     args = [train_paths, eval_paths, model_dir]
     #Inpaint(*args).train()
+    Inpaint(*args).train_content(model_dir + '/autoencoder_2022-07-19_1049' + '/epoch39', 196)
+    
     #Autoencoder(*args).train()
     
-    _dir = model_dir + '/autoencoder_2022-07-19_1049'
-    Autoencoder(*args).evaluate_loss(_dir + '/epoch39', layer=196)
+    #_dir = model_dir + '/autoencoder_2022-07-19_1049'
+    #Autoencoder(*args).evaluate_loss(_dir + '/epoch39', layer=196)
 
 
     #dir = '/data/final_rp_models/rnet-small-23c_2021-09-09_1831'

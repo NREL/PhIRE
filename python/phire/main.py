@@ -1,7 +1,7 @@
 ''' @author: Karen Stengel
 '''
 from .PhIREGANs import *
-from .encoder import load_encoder
+from .rplearn.serialization import load_encoder
 from glob import glob
 from pathlib import Path
 
@@ -22,10 +22,12 @@ def main():
 
     #######################################################
 
-    if encoder_path:
-        encoder = lambda: load_encoder(encoder_path, encoder_layer)
-    else:
-        encoder = None
+    def _load():
+        enc = load_encoder(encoder_path, encoder_layer)
+        enc.summary()
+        return enc
+
+    encoder = _load if encoder_path else None
 
     gan = PhIREGANs(
         data_type=run_name, 

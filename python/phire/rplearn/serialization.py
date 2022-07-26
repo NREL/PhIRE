@@ -14,16 +14,16 @@ def L2(l2=1e-2):
 tf1_custom_objects = {'swish': swish, 'L2': L2}
 
 
-def load_encoder(path, layer_idx=-1, input_shape=None):
+def load_encoder(path, layer_idx=-1, input_shape=None, custom_objects=tf1_custom_objects):
     path = Path(path)
     with open(path / 'encoder.json', 'r') as f:
-        encoder_org = tf.keras.models.model_from_json(f.read(), tf1_custom_objects)
+        encoder_org = tf.keras.models.model_from_json(f.read(), custom_objects)
 
     if input_shape:
         mdef = json.loads(encoder_org.to_json())
         mdef['config']['layers'][0]['config']['batch_input_shape'] = list((None,) + input_shape)
 
-        enc_tmp = tf.keras.models.model_from_json(json.dumps(mdef), tf1_custom_objects)
+        enc_tmp = tf.keras.models.model_from_json(json.dumps(mdef), custom_objects)
 
         input_l = enc_tmp.input
         out_l = enc_tmp.layers[layer_idx].output
@@ -32,7 +32,14 @@ def load_encoder(path, layer_idx=-1, input_shape=None):
         out_l = encoder_org.layers[layer_idx].output
 
     encoder = tf.keras.Model(input_l, out_l, trainable=False)
-    encoder.summary()
     encoder.load_weights(str(path / 'encoder_weights.hdf5'), by_name=True)
 
     return encoder
+
+
+def load_model(dir, custom_objects=tf1_custom_objects):
+    with open(Path(dir) / 'model.json', 'r') as f:
+        model = tf.keras.models.model_from_json(f.read(), custom_objects)
+
+    model.load_weights(str(Path(dir) / 'model_weights.hdf5'), by_name=True)
+    return model

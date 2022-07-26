@@ -7,14 +7,28 @@ class MaskedLoss(tf.keras.losses.Loss):
             super().__init__(**kwargs)
 
         def call(self, y_true, y_pred):
-            s = tf.shape(y_true)
-            H,W = s[1], s[2]
+            y_true = y_true[:, 39:119, 39:119, :]
+            y_pred = y_pred[:, 39:119, 39:119, :]
 
-            H_l = H//4 - 1
-            H_r = 3 * (H//4) - 1
-            W_l = W//4 - 1
-            W_r = 3 * (H//4) - 1
+            # Cant use tf.shape here if we want this to work with ContentLoss
+            # because keras can't properly figure out the graph dependency if
+            # we use losses.Loss.
+            # At this point you have to be madly stupid not to switch to torch...
 
-            y_true = y_true[:, H_l:H_r, W_l:W_r, :]
-            y_pred = y_pred[:, H_l:H_r, W_l:W_r, :]
-            return self.loss(y_true, y_pred)
+            return self.loss.call(y_true, y_pred)
+
+
+class ContentLoss(tf.keras.losses.Loss):
+
+    def __init__(self, encoder, scale=1.0, **kwargs):
+        self.encoder = encoder
+        self.scale = scale
+        self.mse = tf.keras.losses.MeanSquaredError()
+
+        super().__init__(**kwargs)
+
+    def call(self, y_true, y_pred):
+        enc_true = self.encoder(y_true, training=False)
+        enc_pred = self.encoder(y_pred, training=False)
+
+        return self.scale * self.mse.call(enc_true, enc_pred)
