@@ -26,7 +26,6 @@ class ContentLoss(tf.keras.losses.Loss):
     def __init__(self, encoder, scale=1.0, **kwargs):
         self.encoder = encoder
         self.scale = scale
-        self.mse = tf.keras.losses.MeanSquaredError()
 
         super().__init__(**kwargs)
 
@@ -34,4 +33,7 @@ class ContentLoss(tf.keras.losses.Loss):
         enc_true = self.encoder(y_true, training=False)
         enc_pred = self.encoder(y_pred, training=False)
 
-        return self.scale * self.mse.call(enc_true, enc_pred)
+        enc_loss = tf.math.reduce_mean(tf.math.squared_difference(enc_true, enc_pred), axis=[1,2,3])
+        mse_loss = tf.math.reduce_mean(tf.math.squared_difference(y_true, y_pred), axis=[1,2,3])
+
+        return 0.9 * self.scale * enc_loss + 0.1 * mse_loss
