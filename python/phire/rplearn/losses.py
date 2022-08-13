@@ -7,8 +7,11 @@ class MaskedLoss(tf.keras.losses.Loss):
             super().__init__(**kwargs)
 
         def call(self, y_true, y_pred):
-            y_true = y_true[:, 39:119, 39:119, :]
-            y_pred = y_pred[:, 39:119, 39:119, :]
+            l = 80 - 20 -1
+            r = 80 + 20 -1
+
+            y_true = y_true[:, l:r, l:r, :]
+            y_pred = y_pred[:, l:r, l:r, :]
 
             # Cant use tf.shape here if we want this to work with ContentLoss
             # because keras can't properly figure out the graph dependency if
