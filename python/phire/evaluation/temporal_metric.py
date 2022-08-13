@@ -31,7 +31,8 @@ class TemporalMetric(EvaluationMethod):
             label = self.label if self.label else 'loss'
 
             for c in range(C):
-                df = pd.DataFrame.from_dict({name: data[name][..., c] for name in data})
+                N = min([data[name].shape[0] for name in data])
+                df = pd.DataFrame.from_dict({name: data[name][:N, c] for name in data})
                 df = pd.melt(df, var_name='model', value_name=label)
 
                 #g = sns.displot(x=label, hue='model', bins=35, height=3.0, aspect=1.0, data=df, palette=['C1', 'C2', 'C3', 'C4'])

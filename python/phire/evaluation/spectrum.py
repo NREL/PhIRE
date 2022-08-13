@@ -86,7 +86,7 @@ class PowerSpectrum(EvaluationMethod):
 
     def __init__(self, H,W):
         super(PowerSpectrum, self).__init__()
-        #self.spharm = Spharmt(W,H, legfunc='stored')
+        self.spharm = Spharmt(W,H, legfunc='stored')
         self.spectrums = []
 
         self.needs_sh = True
