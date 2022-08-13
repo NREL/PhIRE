@@ -246,7 +246,7 @@ class Atmodist(BaseTrain):
         '''
 
         self.n_classes = 31
-        regularizer = tf.keras.regularizers.L2(1e-4)
+        regularizer = tf.keras.regularizers.l2(1e-4)
         self.resnet = ResnetSmall(shape=(160,160,2), n_classes=self.n_classes, output_logits=False, shortcut='projection', regularizer=regularizer)
         
         super().__init__(*args, **kwargs)
@@ -320,7 +320,7 @@ class Autoencoder(BaseTrain):
         Autoencoder
         '''
 
-        regularizer = tf.keras.regularizers.L2(1e-3)
+        regularizer = tf.keras.regularizers.l2(1e-4)
         self.resnet = AutoencoderSmall(shape=(160,160,2), shortcut='projection', regularizer=regularizer)
         
         super().__init__(*args, **kwargs)
@@ -374,7 +374,7 @@ class Inpaint(BaseTrain):
         Inpainting
         '''
 
-        regularizer = tf.keras.regularizers.L2(1e-3)
+        regularizer = tf.keras.regularizers.l2(1e-4)
         self.resnet = AutoencoderSmall(shape=(160,160,2), shortcut='projection', regularizer=regularizer)
         
         super().__init__(*args, **kwargs)

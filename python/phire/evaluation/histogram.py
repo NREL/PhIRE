@@ -48,6 +48,8 @@ class Histogram(EvaluationMethod):
 
         for c in range(C):
             data = {name: np.load(path / f'raw_channel{c}.npy') for name, path in paths.items()}
+            N = min(data[k].shape[0] for k in data)
+            data = {k: data[k][:N] for k in data}
             channel_name = ['divergence [s\u207B\u00B9]', 'vorticity [s\u207B\u00B9]'][c] 
 
             # quantiles

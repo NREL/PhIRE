@@ -153,13 +153,13 @@ class Evaluation:
 
         if self.denorm:
             self.metrics = {
-                #'power-spectrum': PowerSpectrum(1280, 2560),
-                #'semivariogram': Semivariogram(n_samples=300),
-                # 'moments': Moments(),
-                #'imgs/SEA': vis_sea,
-                #'imgs/EU': vis_eu,
-                #'imgs/NA': vis_na,
-                #'imgs/pacific': vis_pac,
+                'power-spectrum': PowerSpectrum(1280, 2560),
+                'semivariogram': Semivariogram(n_samples=300),
+                'moments': Moments(),
+                'imgs/SEA': vis_sea,
+                'imgs/EU': vis_eu,
+                'imgs/NA': vis_na,
+                'imgs/pacific': vis_pac,
                 'losses/mse': TemporalMetric(_mse_loss, label='mean squared error'),
                 'losses/tv': TemporalMetric(_tv_loss, label='total variation difference'),
                 #'random_projection': rand_proj,
@@ -176,9 +176,9 @@ class Evaluation:
                     projection = lambda batch, y=y,x=x: batch[:, y:y+25, x:x+25, :]
                     #self.metrics[f'projections/{machine_name}'] = Project(None, self.mean, self.std, projection)
                 
-                #self.metrics[f'histograms_1x1/{machine_name}'] = Histogram((y,x), (1,1))
-                #self.metrics[f'histograms_2x2/{machine_name}'] = Histogram((y,x), (2,2))
-                #self.metrics[f'histograms_3x3/{machine_name}'] = Histogram((y,x), (3,3))
+                self.metrics[f'histograms_1x1/{machine_name}'] = Histogram((y,x), (1,1))
+                self.metrics[f'histograms_2x2/{machine_name}'] = Histogram((y,x), (2,2))
+                self.metrics[f'histograms_3x3/{machine_name}'] = Histogram((y,x), (3,3))
 
 
         else:
@@ -311,6 +311,9 @@ class Evaluation:
         if not self.create_dirs(outdir, self.metrics):
             return
 
+        if 'power-spectrum' in self.metrics:
+            self.metrics['power-spectrum'].spharm = None # not serializable
+
         with multiprocessing.Pool(8) as pool:
             results = []
             for name, metric in self.metrics.items():
@@ -359,12 +362,17 @@ def main():
         checkpoint = '/data/sr_models/abla-31c-20211011-134752/training/gan-9'
     )
 
+    autoenc_gan9 = GANIterator(
+        outdir = DIR / 'autoenc/gan-9',
+        checkpoint = '/data/sr_models/autoencoder-l148-20220804-150439/training/gan-9'
+    )
+
     fftreg = GANIterator(
         outdir = DIR / 'rnet-small-23c-fftreg/gan-6',
         checkpoint = '/data/sr_models/rnet-small-23c-fftreg-20210924-142214/training/gan-6'
     )
 
-    if False:
+    if True:
         """
         Evaluation(groundtruth, force_overwrite=True).run(max_iters=None)
         del groundtruth
@@ -395,15 +403,20 @@ def main():
         del abla_31c_gan9
         gc.collect()
         """
+
+        Evaluation(autoenc_gan9, force_overwrite=True).run(max_iters=None)
+        del autoenc_gan9
+        gc.collect()
         
         #Evaluation(fftreg, force_overwrite=True).run(max_iters=30)
         pass
 
     if True: 
-        Evaluation(groundtruth, force_overwrite=True).summarize(DIR / 'summary2', {
+        Evaluation(groundtruth, force_overwrite=True).summarize(DIR / 'summary3', {
             'ground truth': DIR / 'groundtruth',
             'ours': DIR / 'rnet-small-23c/gan-18',
             'l2': DIR / 'mse/gan-18',
+            'autoenc': DIR / 'autoenc/gan-9',
         })
 
         """
