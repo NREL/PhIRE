@@ -163,22 +163,3 @@ class PretextModel(EncoderDecoderModel):
         
         pred = self.dense(x, self.n_classes, 'pred', None if self.output_logits else 'softmax', use_bias=False)
         return pred
-
-  
-
-
-
-def load_model(dir, custom_objects=None):
-    with open(Path(dir) / 'model.json', 'r') as f:
-        model = tf.keras.models.model_from_json(f.read(), custom_objects)
-
-    model.load_weights(str(Path(dir) / 'model_weights.hdf5'), by_name=True)
-    return model
-
-
-def load_encoder(dir, custom_objects=None):
-    with open(Path(dir) / 'encoder.json', 'r') as f:
-        model = tf.keras.models.model_from_json(f.read(), custom_objects)
-
-    model.load_weights(str(Path(dir) / 'encoder_weights.hdf5'), by_name=True)
-    return model
