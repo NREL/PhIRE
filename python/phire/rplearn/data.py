@@ -63,10 +63,10 @@ def parse_inpaint_sample(serialized):
     s = tf.shape(X)
     N,H,W,C = s[0], s[1], s[2], s[3]
 
-    H_l = H//4 - 1
-    H_r = 3 * (H//4) - 1
-    W_l = W//4 - 1
-    W_r = 3 * (H//4) - 1
+    H_l = 3*(H//8) - 1
+    H_r = 5*(H//8) - 1
+    W_l = 3*(W//8) - 1
+    W_r = 5*(H//8) - 1
 
     # fill area with zeros
     indices = tf.range(N*H*W*C, dtype=tf.int32)

@@ -369,7 +369,7 @@ class Autoencoder(BaseTrain):
 class Inpaint(BaseTrain):
 
     def __init__(self, *args, **kwargs):
-        self.prefix = 'inpaint'
+        self.prefix = 'inpaint_autoenc148'
         self.description = '''
         Inpainting
         '''
@@ -391,15 +391,15 @@ class Inpaint(BaseTrain):
         lr_reducer = tf.keras.callbacks.ReduceLROnPlateau('loss', min_delta=4e-2, min_lr=1e-5, patience=6)
         callbacks = [csv_logger, lr_reducer, saver]
 
-        optimizer = tf.keras.optimizers.SGD(momentum=0.9, clipnorm=5.0, nesterov=True)
+        #optimizer = tf.keras.optimizers.SGD(1e-1, momentum=0.9, clipnorm=5.0, nesterov=True)
+        optimizer = tf.keras.optimizers.Adam(1e-4, clipnorm=5.0)
+
 
         model.compile(
             optimizer=optimizer,
             loss=loss,
             metrics=metrics
         )
-
-        model.optimizer.learning_rate.assign(1e-1)
 
         # training
         model.fit(
@@ -421,10 +421,12 @@ class Inpaint(BaseTrain):
 
     def train_content(self, path, layer):
         path = Path(path)
-        encoder = load_encoder(path, layer, (80,80,2))
+        encoder = load_encoder(path, layer, (40,40,2))
         scale = float((path / f'layer{layer}_scale.txt').read_text())
         loss = MaskedLoss(ContentLoss(encoder, scale))
         
+        #self.resnet.load_weights("/data/final_rp_models/inpaint_2022-07-19_1116/epoch16/")
+
         return self._train(self.resnet.model, loss)
 
 
@@ -439,11 +441,11 @@ def main():
 
     train_paths = glob('/data2/rplearn/rplearn_train_1979_1998.*.tfrecords')
     eval_paths = glob('/data2/rplearn/rplearn_eval_2000_2005.*.tfrecords')
-    model_dir = '/data/final_rp_models'
+    model_dir = '/data/inpainting_models'
 
     args = [train_paths, eval_paths, model_dir]
-    #Inpaint(*args).train()
-    Inpaint(*args).train_content(model_dir + '/autoencoder_2022-07-19_1049' + '/epoch39', 196)
+    Inpaint(*args).train()
+    #Inpaint(*args).train_content('/data/final_rp_models/autoencoder_2022-07-19_1049' + '/epoch39', 148)
     
     #Autoencoder(*args).train()
     
