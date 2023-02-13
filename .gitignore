@@ -1,0 +1,6 @@
+*.pyc
+data_out/
+figures_out/
+models/
+*.egg-info
+uncertainty/
